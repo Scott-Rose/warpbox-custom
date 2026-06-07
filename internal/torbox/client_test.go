@@ -130,6 +130,63 @@ func TestGetDownloadURLSuccess(t *testing.T) {
 	}
 }
 
+func TestClientRecoversAfterErrors(t *testing.T) {
+	// Simulate a server that returns error then success.
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount <= 2 {
+			// First two calls fail.
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte(`{"data":null,"success":false,"detail":"Rate limited"}`))
+			return
+		}
+		// Third call succeeds.
+		resp := apiResponse[[]Torrent]{
+			Data: []Torrent{
+				{ID: 1, Name: "Recovered Torrent", Hash: "abc", Size: 500,
+					DownloadState: "cached",
+					Files: []TorrentFile{
+						{ID: 10, Name: "recovered.mkv", Size: 500, MimeType: "video/x-matroska"},
+					},
+				},
+			},
+			Success: boolPtr(true),
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key")
+
+	// First call should fail with 429.
+	_, err1 := client.ListFiles(context.Background(), ListFilesParams{})
+	if err1 == nil {
+		t.Fatal("expected error on first call (429), got nil")
+	}
+
+	// Second call should also fail with 429.
+	_, err2 := client.ListFiles(context.Background(), ListFilesParams{})
+	if err2 == nil {
+		t.Fatal("expected error on second call (429), got nil")
+	}
+
+	// Third call should succeed.
+	torrents, err3 := client.ListFiles(context.Background(), ListFilesParams{})
+	if err3 != nil {
+		t.Fatalf("expected success on third call, got: %v", err3)
+	}
+	if len(torrents) != 1 {
+		t.Fatalf("expected 1 torrent, got %d", len(torrents))
+	}
+	if torrents[0].Name != "Recovered Torrent" {
+		t.Errorf("name = %q", torrents[0].Name)
+	}
+	if callCount != 3 {
+		t.Errorf("expected 3 calls to mock server, got %d", callCount)
+	}
+}
+
 func TestGetDownloadURLEmpty(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := apiResponse[string]{Data: "", Success: boolPtr(true)}
