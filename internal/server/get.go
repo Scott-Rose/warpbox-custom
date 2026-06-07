@@ -62,11 +62,10 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 		}
 		resCh := make(chan result, 1)
 
-		torrentID := file.ID // In flat layout, file.ID doubles as torrent_id
 		s.queue.Enqueue(throttle.Request{
-			Label: fmt.Sprintf("GET CDN URL for file %d", file.ID),
+			Label: fmt.Sprintf("GET CDN URL for file %d", file.FileID),
 			Execute: func(ctx context.Context) error {
-				url, err := s.torBox.GetDownloadURL(ctx, torrentID, file.ID, false)
+				url, err := s.torBox.GetDownloadURL(ctx, file.TorrentID, file.FileID, false)
 				resCh <- result{url, err}
 				return err
 			},
@@ -74,7 +73,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 
 		res := <-resCh
 		if res.err != nil {
-			slog.Error("GET: failed to get CDN URL", "id", file.ID, "error", res.err)
+			slog.Error("GET: failed to get CDN URL", "torrent_id", file.TorrentID, "file_id", file.FileID, "error", res.err)
 			http.Error(w, "Failed to get download URL", http.StatusBadGateway)
 			return
 		}
@@ -84,7 +83,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.CDNTtlMinutes > 0 {
 			expiry := time.Now().Add(time.Duration(s.cfg.CDNTtlMinutes) * time.Minute)
 			if err := s.store.SetCDNURL(file.ID, cdnURL, expiry); err != nil {
-				slog.Error("GET: failed to cache CDN URL", "id", file.ID, "error", err)
+				slog.Error("GET: failed to cache CDN URL", "path", file.Path, "error", err)
 			}
 		}
 	}

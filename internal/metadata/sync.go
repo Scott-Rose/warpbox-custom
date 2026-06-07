@@ -97,10 +97,11 @@ func (w *SyncWorker) syncOnce(ctx context.Context) {
 			virtualPath := path.Join(t.Name, f.Name)
 
 			rec := FileRecord{
-				ID:       f.ID,
-				Name:     f.Name,
-				Path:     virtualPath,
-				Size:     f.Size,
+				TorrentID: t.ID,
+				FileID:    f.ID,
+				Name:      f.Name,
+				Path:      virtualPath,
+				Size:      f.Size,
 				MimeType: f.MimeType,
 			}
 			if err := w.store.UpsertFile(rec); err != nil {

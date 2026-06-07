@@ -28,33 +28,35 @@ func TestUpsertFile(t *testing.T) {
 	defer s.Close()
 
 	f := FileRecord{
-		ID:       100,
-		Name:     "test.mkv",
-		Path:     "/Movies/test.mkv",
-		Size:     1024,
-		MimeType: "video/x-matroska",
+		TorrentID: 100,
+		FileID:    1,
+		Name:      "test.mkv",
+		Path:      "/Movies/test.mkv",
+		Size:      1024,
+		MimeType:  "video/x-matroska",
 	}
 	if err := s.UpsertFile(f); err != nil {
 		t.Fatalf("UpsertFile failed: %v", err)
 	}
 }
 
-func TestGetFileByID(t *testing.T) {
+func TestGetFileByFileID(t *testing.T) {
 	s := newTestStore(t)
 	defer s.Close()
 
 	f := FileRecord{
-		ID:       42,
-		Name:     "movie.mkv",
-		Path:     "/Movies/movie.mkv",
-		Size:     4096,
-		MimeType: "video/x-matroska",
+		TorrentID: 42,
+		FileID:    1,
+		Name:      "movie.mkv",
+		Path:      "/Movies/movie.mkv",
+		Size:      4096,
+		MimeType:  "video/x-matroska",
 	}
 	s.UpsertFile(f)
 
-	got, err := s.GetFileByID(42)
+	got, err := s.GetFileByFileID(1)
 	if err != nil {
-		t.Fatalf("GetFileByID failed: %v", err)
+		t.Fatalf("GetFileByFileID failed: %v", err)
 	}
 	if got == nil {
 		t.Fatal("expected file, got nil")
@@ -65,18 +67,21 @@ func TestGetFileByID(t *testing.T) {
 	if got.Size != 4096 {
 		t.Errorf("size = %d, want %d", got.Size, 4096)
 	}
+	if got.TorrentID != 42 {
+		t.Errorf("torrent_id = %d, want 42", got.TorrentID)
+	}
 }
 
-func TestGetFileByIDNotFound(t *testing.T) {
+func TestGetFileByFileIDNotFound(t *testing.T) {
 	s := newTestStore(t)
 	defer s.Close()
 
-	got, err := s.GetFileByID(999)
+	got, err := s.GetFileByFileID(999)
 	if err != nil {
-		t.Fatalf("GetFileByID failed: %v", err)
+		t.Fatalf("GetFileByFileID failed: %v", err)
 	}
 	if got != nil {
-		t.Errorf("expected nil for missing ID, got %+v", got)
+		t.Errorf("expected nil for missing file_id, got %+v", got)
 	}
 }
 
@@ -85,10 +90,11 @@ func TestGetFileByPath(t *testing.T) {
 	defer s.Close()
 
 	s.UpsertFile(FileRecord{
-		ID:   1,
-		Name: "file.txt",
-		Path: "/docs/file.txt",
-		Size: 100,
+		TorrentID: 1,
+		FileID:    10,
+		Name:      "file.txt",
+		Path:      "/docs/file.txt",
+		Size:      100,
 	})
 
 	got, err := s.GetFileByPath("/docs/file.txt")
@@ -98,8 +104,11 @@ func TestGetFileByPath(t *testing.T) {
 	if got == nil {
 		t.Fatal("expected file, got nil")
 	}
-	if got.ID != 1 {
-		t.Errorf("id = %d, want 1", got.ID)
+	if got.FileID != 10 {
+		t.Errorf("file_id = %d, want 10", got.FileID)
+	}
+	if got.TorrentID != 1 {
+		t.Errorf("torrent_id = %d, want 1", got.TorrentID)
 	}
 }
 
@@ -108,9 +117,9 @@ func TestListDir(t *testing.T) {
 	defer s.Close()
 
 	files := []FileRecord{
-		{ID: 1, Name: "a.mkv", Path: "/Movies/a.mkv", Size: 100},
-		{ID: 2, Name: "b.mkv", Path: "/Movies/b.mkv", Size: 200},
-		{ID: 3, Name: "c.mp3", Path: "/Music/c.mp3", Size: 300},
+		{TorrentID: 1, FileID: 1, Name: "a.mkv", Path: "/Movies/a.mkv", Size: 100},
+		{TorrentID: 1, FileID: 2, Name: "b.mkv", Path: "/Movies/b.mkv", Size: 200},
+		{TorrentID: 2, FileID: 1, Name: "c.mp3", Path: "/Music/c.mp3", Size: 300},
 	}
 	for _, f := range files {
 		s.UpsertFile(f)
@@ -139,16 +148,20 @@ func TestSetGetCDNURL(t *testing.T) {
 	s := newTestStore(t)
 	defer s.Close()
 
-	s.UpsertFile(FileRecord{ID: 1, Name: "f.mkv", Path: "/f.mkv", Size: 100})
+	s.UpsertFile(FileRecord{TorrentID: 1, FileID: 1, Name: "f.mkv", Path: "/f.mkv", Size: 100})
+
+	// Fetch the internal ID that was assigned.
+	file, _ := s.GetFileByFileID(1)
+	internalID := file.ID
 
 	// Set CDN URL with 1 hour expiry.
 	expiry := time.Now().Add(1 * time.Hour)
-	if err := s.SetCDNURL(1, "https://cdn.example.com/file", expiry); err != nil {
+	if err := s.SetCDNURL(internalID, "https://cdn.example.com/file", expiry); err != nil {
 		t.Fatalf("SetCDNURL failed: %v", err)
 	}
 
 	// Get it back (should be fresh).
-	url, err := s.GetCDNURL(1)
+	url, err := s.GetCDNURL(internalID)
 	if err != nil {
 		t.Fatalf("GetCDNURL failed: %v", err)
 	}
@@ -161,15 +174,17 @@ func TestGetExpiredCDNURL(t *testing.T) {
 	s := newTestStore(t)
 	defer s.Close()
 
-	s.UpsertFile(FileRecord{ID: 2, Name: "g.mkv", Path: "/g.mkv", Size: 100})
+	s.UpsertFile(FileRecord{TorrentID: 2, FileID: 1, Name: "g.mkv", Path: "/g.mkv", Size: 100})
+	file, _ := s.GetFileByFileID(1)
+	internalID := file.ID
 
 	// Set CDN URL that already expired.
 	expiry := time.Now().Add(-1 * time.Hour)
-	if err := s.SetCDNURL(2, "https://cdn.example.com/old", expiry); err != nil {
+	if err := s.SetCDNURL(internalID, "https://cdn.example.com/old", expiry); err != nil {
 		t.Fatalf("SetCDNURL failed: %v", err)
 	}
 
-	url, err := s.GetCDNURL(2)
+	url, err := s.GetCDNURL(internalID)
 	if err != nil {
 		t.Fatalf("GetCDNURL failed: %v", err)
 	}
@@ -182,15 +197,30 @@ func TestUpsertUpdatesExisting(t *testing.T) {
 	s := newTestStore(t)
 	defer s.Close()
 
-	s.UpsertFile(FileRecord{ID: 1, Name: "old.mkv", Path: "/same/path.mkv", Size: 100})
-	s.UpsertFile(FileRecord{ID: 1, Name: "new.mkv", Path: "/same/path.mkv", Size: 200})
+	s.UpsertFile(FileRecord{TorrentID: 1, FileID: 1, Name: "old.mkv", Path: "/same/path.mkv", Size: 100})
+	s.UpsertFile(FileRecord{TorrentID: 1, FileID: 1, Name: "new.mkv", Path: "/same/path.mkv", Size: 200})
 
-	got, _ := s.GetFileByID(1)
+	got, _ := s.GetFileByFileID(1)
 	if got.Name != "new.mkv" {
 		t.Errorf("name = %q, want %q", got.Name, "new.mkv")
 	}
 	if got.Size != 200 {
 		t.Errorf("size = %d, want %d", got.Size, 200)
+	}
+}
+
+func TestGetTorrentIDByFileID(t *testing.T) {
+	s := newTestStore(t)
+	defer s.Close()
+
+	s.UpsertFile(FileRecord{TorrentID: 55, FileID: 7, Name: "f.mkv", Path: "/f.mkv", Size: 100})
+
+	tid, err := s.GetTorrentIDByFileID(7)
+	if err != nil {
+		t.Fatalf("GetTorrentIDByFileID failed: %v", err)
+	}
+	if tid != 55 {
+		t.Errorf("torrent_id = %d, want 55", tid)
 	}
 }
 
@@ -204,5 +234,22 @@ func TestDatabaseFileCreated(t *testing.T) {
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		t.Error("database file was not created on disk")
+	}
+}
+
+func TestUpsertDuplicatePathDifferentTorrent(t *testing.T) {
+	s := newTestStore(t)
+	defer s.Close()
+
+	// Different torrents, same path — upsert should work (path is unique).
+	s.UpsertFile(FileRecord{TorrentID: 1, FileID: 1, Name: "f.mkv", Path: "/f.mkv", Size: 100})
+	s.UpsertFile(FileRecord{TorrentID: 2, FileID: 1, Name: "f.mkv", Path: "/f.mkv", Size: 200})
+
+	got, _ := s.GetFileByFileID(1)
+	if got.TorrentID != 2 {
+		t.Errorf("torrent_id = %d, want 2 (last upsert wins)", got.TorrentID)
+	}
+	if got.Size != 200 {
+		t.Errorf("size = %d, want 200", got.Size)
 	}
 }
