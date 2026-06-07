@@ -86,6 +86,15 @@ func main() {
 	// Start the throttle processing loop.
 	throttleQueue.Start(ctx)
 
+	// --- Metadata sync worker ---
+	syncWorker := metadata.NewSyncWorker(
+		metadataStore,
+		torBoxClient,
+		throttleQueue,
+		time.Duration(cfg.Sync.IntervalMinutes)*time.Minute,
+	)
+	go syncWorker.Start(ctx)
+
 	// --- WebDAV server ---
 	srv := server.New(
 		server.Config{
