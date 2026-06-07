@@ -57,7 +57,7 @@ type Config struct {
 // setDefaults fills in default values for any zero-valued fields.
 func setDefaults(c *Config) {
 	if c.TorBox.BaseURL == "" {
-		c.TorBox.BaseURL = "https://api.torbox.app/v1"
+		c.TorBox.BaseURL = "https://api.torbox.app"
 	}
 	if c.Server.ListenAddr == "" {
 		c.Server.ListenAddr = ":8080"
