@@ -1,34 +1,86 @@
 # Warpbox Configuration
 # Copy this file to config.yml and fill in your values.
+#
+# Every setting in this file has a documented purpose, default value,
+# valid options/range, and whether it is required or optional.
 
+# ---------------------------------------------------------------------------
+# TorBox API Connection
+# ---------------------------------------------------------------------------
 torbox:
-  # Your TorBox API key (required).
+  # Your TorBox API key.
+  # This is required. Obtain it from your TorBox account dashboard.
+  # Type: string. Required: yes. Valid: any non-empty API token.
   api_key: ""
-  # Base URL for the TorBox API (optional).
+
+  # Base URL for the TorBox API.
+  # Optional. Default: "https://api.torbox.app/v1"
+  # Type: string (URL). Valid: any HTTPS endpoint returning the TorBox API.
   base_url: "https://api.torbox.app/v1"
 
+# ---------------------------------------------------------------------------
+# WebDAV Server Settings
+# ---------------------------------------------------------------------------
 server:
-  # Address the WebDAV server listens on (optional).
+  # Network address and port the WebDAV server listens on.
+  # Optional. Default: ":8080"
+  # Type: string (host:port). Valid: any valid Go net.Listen address.
+  # Examples: ":8080" (all interfaces), "127.0.0.1:8080" (loopback only).
   listen_addr: ":8080"
-  # Root path for the WebDAV service (optional).
+
+  # Root URL path for the WebDAV service.
+  # Optional. Default: "/webdav"
+  # Type: string (path). Valid: any URL path segment.
+  # rclone would use: http://localhost:8080/webdav/ as the URL.
   webdav_root: "/webdav"
 
+# ---------------------------------------------------------------------------
+# JIT RAM Cache Configuration
+# ---------------------------------------------------------------------------
 cache:
-  # Size of each pre-fetched chunk in MB (optional, default 16).
+  # Size of each pre-fetched chunk in megabytes.
+  # When a file read starts, Warpbox fetches this much data ahead and
+  # holds it in RAM for sequential reads.
+  # Optional. Default: 16. Valid range: 1–1024.
   chunk_size_mb: 16
-  # Maximum RAM to use for cached chunks in MB (optional, default 512).
+
+  # Maximum RAM to use for cached chunks in megabytes.
+  # When this limit is reached, the oldest chunks are evicted to make room.
+  # Optional. Default: 512. Valid range: 64–16384.
   max_ram_mb: 512
-  # Time-to-live for cached chunks in seconds (optional, default 30).
+
+  # Time-to-live for cached chunks in seconds.
+  # Chunks not accessed within this window are evicted from RAM.
+  # Optional. Default: 30. Valid range: 5–86400 (1 second to 24 hours).
   ttl_seconds: 30
 
+# ---------------------------------------------------------------------------
+# Rate-Limiting / Throttle
+# ---------------------------------------------------------------------------
 throttle:
-  # Maximum API requests per minute to TorBox (optional, default 250).
+  # Maximum number of API requests allowed per minute to TorBox.
+  # TorBox enforces a 300 requests/minute hard limit. Set this lower to
+  # maintain a safety margin.
+  # Optional. Default: 250. Valid range: 10–290.
   requests_per_minute: 250
 
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
 logging:
-  # Log format: "text" for human-readable, "json" for structured JSON (optional, default "text").
+  # Log output format.
+  # - "text" — Human-readable key=value pairs. Best for local development
+  #   and debugging. Shows timestamps, log level, and message inline.
+  # - "json" — Structured JSON objects. Best for production environments
+  #   and log aggregation systems (e.g., Loki, Datadog, ELK).
+  # Optional. Default: "text".
   format: "text"
 
+# ---------------------------------------------------------------------------
+# Metadata Sync
+# ---------------------------------------------------------------------------
 sync:
-  # How often to refresh metadata from TorBox in minutes (optional, default 5).
+  # How often to refresh the local SQLite metadata cache from TorBox.
+  # A full sync calls the TorBox API once, so the throttle rate applies.
+  # Optional. Default: 5. Valid range: 1–1440 (1 minute to 24 hours).
   interval_minutes: 5

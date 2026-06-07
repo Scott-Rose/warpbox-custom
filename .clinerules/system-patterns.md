@@ -13,6 +13,8 @@ Plex/Jellyfin → rclone (FUSE mount) → WebDAV → Warpbox → TorBox API
 * All application settings must be driven by a declarative `config.yml` file.
 * The structure should logically separate upstream cloud credentials, local WebDAV server settings, caching rules, and rate-limiting parameters.
 * The exact schema is flexible but must support graceful degradation if optional parameters are omitted.
+* **No hardcoded behaviour:** Any tunable logic (thresholds, strategy selection, durations, cache lifetimes, eviction policies) MUST be surfaced as a configuration option with a sensible default. The config file is the single source of truth for all runtime behaviour.
+* **Example file completeness:** Every configuration key must appear in `config.yml.example` with an explanatory comment. Comments must document: the purpose of the setting, its default value, whether it is required or optional, and all valid options/ranges where applicable.
 
 ## 3. State & Caching Patterns
 
