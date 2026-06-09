@@ -31,7 +31,8 @@ type Server struct {
 type Config struct {
 	ListenAddr    string
 	WebDAVRoot    string
-	CDNTtlMinutes int // How long to cache CDN URLs (0 = disable)
+	CDNTtlMinutes int    // How long to cache CDN URLs (0 = disable)
+	Version       string // Build version, injected at compile time
 }
 
 // New creates a new WebDAV server.
@@ -49,14 +50,22 @@ func New(cfg Config, store *metadata.Store, cache *cache.Buffer, torBox *torbox.
 	return s
 }
 
+// versionHeader returns an HTTP middleware that sets the Server header.
+func (s *Server) versionHeader(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Server", "warpbox/"+s.cfg.Version)
+		next.ServeHTTP(w, r)
+	})
+}
+
 // registerRoutes sets up the HTTP handlers for WebDAV methods,
 // the branded landing page, and the embedded favicon/logo.
 func (s *Server) registerRoutes() {
-	handler := http.HandlerFunc(s.handleWebDAV)
+	handler := s.versionHeader(http.HandlerFunc(s.handleWebDAV))
 	s.mux.Handle(s.root+"/", handler)
 	s.mux.Handle(s.root, handler)
 
-	s.mux.HandleFunc("/", s.handleLanding)
+	s.mux.Handle("/", s.versionHeader(http.HandlerFunc(s.handleLanding)))
 	s.mux.HandleFunc("/warpbox.png", s.handleLogo)
 	s.mux.HandleFunc("/favicon.ico", s.handleLogo)
 }

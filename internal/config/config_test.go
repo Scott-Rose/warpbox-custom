@@ -27,8 +27,8 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.TorBox.BaseURL != "https://api.torbox.app" {
 		t.Errorf("base_url = %q, want %q", cfg.TorBox.BaseURL, "https://api.torbox.app")
 	}
-	if cfg.Server.ListenAddr != ":8080" {
-		t.Errorf("listen_addr = %q, want %q", cfg.Server.ListenAddr, ":8080")
+	if cfg.Server.ListenAddr != ":1412" {
+		t.Errorf("listen_addr = %q, want %q", cfg.Server.ListenAddr, ":1412")
 	}
 	if cfg.Cache.ChunkSizeMB != 16 {
 		t.Errorf("chunk_size_mb = %d, want %d", cfg.Cache.ChunkSizeMB, 16)

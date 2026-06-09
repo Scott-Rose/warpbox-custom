@@ -10,7 +10,9 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=1 go build -tags netgo -ldflags='-s -w -extldflags=-static' \
+RUN VERSION=$(git describe --tags --always 2>/dev/null || echo dev) && \
+    CGO_ENABLED=1 go build -tags netgo \
+    -ldflags="-s -w -extldflags=-static -X main.Version=${VERSION}" \
     -o /warpbox ./cmd/warpbox/
 
 # ---------------------------------------------------------------------------

@@ -60,7 +60,7 @@ func setDefaults(c *Config) {
 		c.TorBox.BaseURL = "https://api.torbox.app"
 	}
 	if c.Server.ListenAddr == "" {
-		c.Server.ListenAddr = ":8080"
+		c.Server.ListenAddr = ":1412"
 	}
 	if c.Server.WebDAVRoot == "" {
 		c.Server.WebDAVRoot = "/webdav"

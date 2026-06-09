@@ -23,10 +23,20 @@ import (
 	"github.com/ben/warpbox/internal/torbox"
 )
 
+// Version is injected at build time via ldflags (e.g. -X main.Version=v0.6.0).
+// Defaults to "dev" for local builds.
+var Version = "dev"
+
 func main() {
 	configPath := flag.String("config", "config.yml", "Path to the YAML configuration file")
 	dbPath := flag.String("db", "warpbox.db", "Path to the SQLite metadata database")
+	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(Version)
+		os.Exit(0)
+	}
 
 	// --- Configuration ---
 	cfg, err := config.Load(*configPath)
@@ -47,6 +57,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	slog.Info("starting warpbox",
+		"version", Version,
 		"listen_addr", cfg.Server.ListenAddr,
 		"webdav_root", cfg.Server.WebDAVRoot,
 		"log_format", cfg.Logging.Format,
@@ -106,6 +117,7 @@ func main() {
 			ListenAddr:    cfg.Server.ListenAddr,
 			WebDAVRoot:    cfg.Server.WebDAVRoot,
 			CDNTtlMinutes: cfg.Cache.CDNURLTTLMinutes,
+			Version:       Version,
 		},
 		metadataStore,
 		ramCache,
@@ -121,7 +133,7 @@ func main() {
 		}
 	}()
 
-	slog.Info("warpbox ready")
+	slog.Info("warpbox ready", "version", Version)
 
 	// Block until signal or server error.
 	select {

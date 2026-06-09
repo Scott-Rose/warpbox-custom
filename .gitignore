@@ -12,6 +12,9 @@ go.work.sum
 # Config
 config.yml
 
+# Runtime data directory (config.yml + warpbox.db)
+data/
+
 # SQLite databases
 *.db
 *.db-*
