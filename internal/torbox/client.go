@@ -124,7 +124,7 @@ func (c *Client) listGeneric(ctx context.Context, endpoint, label string, params
 	}
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 
-	slog.Debug("torbox."+label, "offset", params.Offset, "limit", params.Limit)
+	slog.Debug("torbox "+label, "offset", params.Offset, "limit", params.Limit)
 
 	body, err := c.do(req)
 	if err != nil {
@@ -141,7 +141,7 @@ func (c *Client) listGeneric(ctx context.Context, endpoint, label string, params
 	}
 
 	n := len(env.Data)
-	slog.Debug("torbox."+label+" result", label, n)
+	slog.Debug("torbox "+label+" result", "count", n)
 	return env.Data, nil
 }
 
@@ -176,7 +176,7 @@ func (c *Client) GetDownloadURL(ctx context.Context, torrentID, fileID int64, re
 		return "", fmt.Errorf("torbox: creating request: %w", err)
 	}
 
-	slog.Debug("torbox.GetDownloadURL", "torrent_id", torrentID, "file_id", fileID)
+	slog.Debug("torbox get_download_url", "torrent_id", torrentID, "file_id", fileID)
 
 	body, err := c.do(req)
 	if err != nil {
@@ -192,7 +192,7 @@ func (c *Client) GetDownloadURL(ctx context.Context, torrentID, fileID int64, re
 		return "", fmt.Errorf("torbox API error: %s", *env.Error)
 	}
 
-	slog.Debug("torbox.GetDownloadURL result", "has_url", env.Data != "")
+	slog.Debug("torbox get_download_url result", "has_url", env.Data != "")
 	return env.Data, nil
 }
 

@@ -7,3 +7,23 @@ services:
     volumes:
       - ./data:/data
     restart: unless-stopped
+
+  rclone:
+    image: rclone/rclone:latest
+    container_name: rclone
+    restart: unless-stopped
+    environment:
+      - RCLONE_CONFIG_WARPBOX_TYPE=webdav
+      - RCLONE_CONFIG_WARPBOX_URL=http://warpbox:1412/webdav/
+      - RCLONE_CONFIG_WARPBOX_VENDOR=other
+    volumes:
+      - /mnt/warpbox:/data:rshared
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse:/dev/fuse:rwm
+    depends_on:
+      - warpbox
+    command: "mount warpbox: /data --allow-other --allow-non-empty --dir-cache-time 10s --vfs-cache-mode full"
