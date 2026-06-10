@@ -102,6 +102,18 @@ rclone mount warpbox: /mnt/warpbox \
   --daemon
 ```
 
+## Release Process
+
+1. Tag the current commit with a semantic version:
+   ```
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+2. The CI pipeline (`.gitea/workflows/build.yml`) automatically builds binaries for all platforms (Linux amd64/arm64, Windows amd64) and pushes Docker images to the Gitea container registry.
+3. Update `docker-compose.yml` to point to the new version tag.
+
+See `.clinerules/source-control.md` for versioning conventions.
+
 ## Status
 
 Active Development. Core WebDAV handlers (PROPFIND, GET with byte-range), CDN URL caching, metadata sync, and rate-limited throttle are implemented.
