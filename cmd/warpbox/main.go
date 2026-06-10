@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -22,6 +23,9 @@ import (
 	"github.com/ben/warpbox/internal/throttle"
 	"github.com/ben/warpbox/internal/torbox"
 )
+
+//go:embed banner.txt
+var banner string
 
 // Version is injected at build time via ldflags (e.g. -X main.Version=v0.6.0).
 // Defaults to "dev" for local builds.
@@ -64,6 +68,8 @@ func main() {
 	}
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
+
+	fmt.Print(banner)
 
 	slog.Info("starting warpbox",
 		"version", Version,
