@@ -249,14 +249,8 @@ func (c *Client) do(req *http.Request) ([]byte, error) {
 		return nil, fmt.Errorf("torbox: reading response: %w", err)
 	}
 
-	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("torbox: authentication failed (401)")
-	}
-	if resp.StatusCode == http.StatusTooManyRequests {
-		return nil, fmt.Errorf("torbox: rate limited (429)")
-	}
-	if resp.StatusCode >= 500 {
-		return nil, fmt.Errorf("torbox: server error (%d)", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("torbox: unexpected status %d", resp.StatusCode)
 	}
 
 	return body, nil

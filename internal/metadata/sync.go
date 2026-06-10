@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/ben/warpbox/internal/throttle"
 	"github.com/ben/warpbox/internal/torbox"
@@ -18,27 +17,11 @@ import (
 
 // SyncWorker periodically synchronises the TorBox file listing into SQLite.
 type SyncWorker struct {
-	store       *Store
-	client      *torbox.Client
-	queue       *throttle.Queue
-	interval    time.Duration
-	limit       int
-	lastError   error
-	lastSuccess time.Time
-}
-
-// SyncStatus describes the state of the most recent metadata sync.
-type SyncStatus struct {
-	LastSuccess time.Time // zero if never succeeded
-	LastError   string    // empty if last sync succeeded
-}
-
-// Status returns the outcome of the most recent sync cycle.
-func (w *SyncWorker) Status() SyncStatus {
-	return SyncStatus{
-		LastSuccess: w.lastSuccess,
-		LastError:   errorString(w.lastError),
-	}
+	store    *Store
+	client   *torbox.Client
+	queue    *throttle.Queue
+	interval time.Duration
+	limit    int
 }
 
 // NewSyncWorker creates a new metadata sync worker.
@@ -80,36 +63,6 @@ func (w *SyncWorker) SyncNow() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	w.syncOnce(ctx)
-}
-
-// sanitizePathSegment removes characters that are invalid or problematic in
-// filesystem paths across Windows and Linux: \ / : * ? " < > | and &.
-// These are replaced with an underscore. The function preserves valid Unicode
-// characters including spaces, dots, and hyphens.
-func sanitizePathSegment(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	for _, r := range s {
-		switch r {
-		case '\\', '/', ':', '*', '?', '"', '<', '>', '|', '&':
-			// & is sanitized because it can cause issues in filesystem paths
-			// and is stripped by the official TorBox WebDAV.
-			if unicode.IsPrint(r) {
-				b.WriteRune('_')
-			}
-		default:
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
-
-// errorString converts an error to a string, returning "" for nil.
-func errorString(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
 }
 
 // syncOnce performs a single sync cycle through the throttle queue.
@@ -167,127 +120,69 @@ func (w *SyncWorker) syncOnce(ctx context.Context) {
 		slog.Error("metadata sync: usenet failed", "error", usenetRes.err)
 	}
 
-	// Reserve a sync batch tag so we can prune stale records later.
-	// This tag is atomically incremented and stored in the meta table.
-	syncTag, err := w.store.GetNextSyncTag()
-	if err != nil {
-		slog.Error("metadata sync: failed to get sync tag", "error", err)
-		return
+	// Merge: torrents first, then usenet.
+	var all []torbox.Torrent
+	if torRes.torrents != nil {
+		all = append(all, torRes.torrents...)
+	}
+	if usenetRes.usenet != nil {
+		all = append(all, usenetRes.usenet...)
 	}
 
-	// Flatten torrent items into file records with SourceTorrent.
+	// Flatten all items into file records.
 	var count int
-	for _, t := range torRes.torrents {
+	for _, t := range all {
 		if t.DownloadState != "cached" && !t.DownloadPresent {
 			continue
 		}
 		if len(t.Files) == 0 {
-			slog.Debug("metadata sync: skipping torrent with no files", "id", t.ID, "name", t.Name)
+			slog.Debug("metadata sync: skipping item with no files", "id", t.ID, "name", t.Name)
 			continue
 		}
 
 		for _, f := range t.Files {
-			rec := buildFileRecord(t.ID, f, syncTag, SourceTorrent, t.CreatedAt)
+			// Derive the virtual path from s3_path: strip the leading hash segment.
+			// s3_path is always "hash/torrent_dir/file_name" for multi-file torrents
+			// but can be "hash/file_name" for single-file torrents with no directory.
+			// In the latter case, create a directory from the filename (minus ext)
+			// to match traditional WebDAV behaviour.
+			virtualPath := f.ShortName
+			if idx := strings.IndexByte(f.S3Path, '/'); idx > 0 && idx+1 < len(f.S3Path) {
+				rest := f.S3Path[idx+1:]
+				// If rest has a second slash, it includes a directory — use directly.
+				// Otherwise it's just a filename at root — wrap in a dir named after itself.
+				if idx2 := strings.IndexByte(rest, '/'); idx2 >= 0 {
+					virtualPath = rest
+				} else {
+					// Single file s3_path: "hash/filename.ext"
+					// Place under a directory named after the file (minus extension).
+					if dot := strings.LastIndexByte(rest, '.'); dot > 0 {
+						virtualPath = rest[:dot] + "/" + rest
+					} else {
+						virtualPath = rest
+					}
+				}
+			}
+
+			rec := FileRecord{
+				TorrentID: t.ID,
+				FileID:    f.ID,
+				Name:      f.ShortName,
+				Path:      virtualPath,
+				Size:      f.Size,
+				MimeType:  f.MimeType,
+			}
 			if err := w.store.UpsertFile(rec); err != nil {
 				slog.Error("metadata sync: upsert failed",
 					"file_id", f.ID,
-					"path", rec.Path,
+					"path", virtualPath,
 					"error", err,
 				)
 				continue
 			}
 			count++
-		}
-	}
-
-	// Flatten usenet items into file records with SourceUsenet.
-	for _, u := range usenetRes.usenet {
-		if u.DownloadState != "cached" && !u.DownloadPresent {
-			continue
-		}
-		if len(u.Files) == 0 {
-			slog.Debug("metadata sync: skipping usenet item with no files", "id", u.ID, "name", u.Name)
-			continue
-		}
-
-		for _, f := range u.Files {
-			rec := buildFileRecord(u.ID, f, syncTag, SourceUsenet, u.CreatedAt)
-			if err := w.store.UpsertFile(rec); err != nil {
-				slog.Error("metadata sync: upsert failed",
-					"file_id", f.ID,
-					"path", rec.Path,
-					"error", err,
-				)
-				continue
-			}
-			count++
-		}
-	}
-
-	// Track sync status.
-	var syncErr error
-	if torRes.err != nil {
-		syncErr = torRes.err
-	} else if usenetRes.err != nil {
-		syncErr = usenetRes.err
-	}
-	w.lastError = syncErr
-	if syncErr == nil {
-		w.lastSuccess = time.Now()
-	}
-
-	// Prune stale records using the sync tag. Records with sync_tag != the
-	// current tag were not touched by this sync and are safe to remove.
-	// We always prune, even on partial fetch failure, to avoid accumulating
-	// orphaned entries for torrents that have been removed from the account.
-	if syncTag > 0 && count > 0 {
-		deleted, pruneErr := w.store.PruneBySyncTag(syncTag)
-		if pruneErr != nil {
-			slog.Error("metadata sync: prune failed", "error", pruneErr)
-		} else if deleted > 0 {
-			slog.Info("metadata sync: pruned stale records", "count", deleted)
 		}
 	}
 
 	slog.Debug("metadata sync complete", "files_synced", count)
-}
-
-// buildFileRecord creates a FileRecord from a TorBox item and file.
-func buildFileRecord(itemID int64, f torbox.TorrentFile, syncTag int64, source FileSource, createdAt string) FileRecord {
-	// Derive the virtual path from s3_path: strip the leading hash segment.
-	// s3_path is always "hash/torrent_dir/file_name" for multi-file torrents
-	// but can be "hash/file_name" for single-file torrents with no directory.
-	// Single-file torrents are placed directly at root level (no wrapper dir).
-	var virtualPath string
-	if idx := strings.IndexByte(f.S3Path, '/'); idx > 0 && idx+1 < len(f.S3Path) {
-		rest := f.S3Path[idx+1:]
-		if idx2 := strings.IndexByte(rest, '/'); idx2 >= 0 {
-			// Multi-file torrent with a directory: "hash/dir/file"
-			// Sanitize each path segment.
-			segments := strings.Split(rest, "/")
-			for i, seg := range segments {
-				segments[i] = sanitizePathSegment(seg)
-			}
-			virtualPath = strings.Join(segments, "/")
-		} else {
-			// Single file s3_path: "hash/filename.ext"
-			// Place directly at root level (no wrapper directory).
-			virtualPath = sanitizePathSegment(rest)
-		}
-	} else {
-		// Fallback: no slash in s3_path at all — use sanitized ShortName.
-		virtualPath = sanitizePathSegment(f.ShortName)
-	}
-
-	return FileRecord{
-		ItemID:    itemID,
-		FileID:    f.ID,
-		Source:    source,
-		Name:      sanitizePathSegment(f.ShortName),
-		Path:      virtualPath,
-		Size:      f.Size,
-		MimeType:  f.MimeType,
-		CreatedAt: createdAt,
-		SyncTag:   syncTag,
-	}
 }
