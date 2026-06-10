@@ -9,6 +9,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ben/warpbox/internal/cache"
@@ -80,13 +81,27 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle("/http/", s.versionHeader(http.HandlerFunc(s.handleHTTP)))
 	s.mux.Handle("/http", s.versionHeader(http.HandlerFunc(s.handleHTTP)))
 
+	// Infuse WebDAV endpoint (same content, different URL path).
+	s.mux.Handle("/infuse/", s.versionHeader(http.HandlerFunc(s.handleWebDAV)))
+	s.mux.Handle("/infuse", s.versionHeader(http.HandlerFunc(s.handleWebDAV)))
+
+	// Log viewer.
+	s.mux.Handle("/logs/", s.versionHeader(http.HandlerFunc(s.handleLogs)))
+	s.mux.Handle("/logs", s.versionHeader(http.HandlerFunc(s.handleLogs)))
+
 	s.mux.Handle("/", s.versionHeader(http.HandlerFunc(s.handleLanding)))
 	s.mux.HandleFunc("/warpbox.png", s.handleLogo)
 	s.mux.HandleFunc("/favicon.ico", s.handleLogo)
 }
 
 // handleWebDAV dispatches WebDAV methods to the appropriate handler.
+// If the request comes via /infuse/, rewrite the path to the configured
+// WebDAV root so the sub-handlers work without modification.
 func (s *Server) handleWebDAV(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/infuse") {
+		r.URL.Path = strings.Replace(r.URL.Path, "/infuse", s.root, 1)
+	}
+
 	switch r.Method {
 	case http.MethodOptions:
 		s.handleOptions(w, r)

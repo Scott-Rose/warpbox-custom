@@ -75,7 +75,11 @@ func main() {
 	} else {
 		handler = slog.NewTextHandler(os.Stderr, opts)
 	}
-	logger := slog.New(handler)
+
+	// Wrap the handler with a ring buffer for the /logs/ endpoint.
+	bufHandler := server.NewRingBufferHandler(handler)
+	server.SetLogBuffer(bufHandler)
+	logger := slog.New(bufHandler)
 	slog.SetDefault(logger)
 
 	fmt.Print(banner)

@@ -42,6 +42,8 @@ type LandingData struct {
 	FileCount            int
 	WebDAVURL            string
 	HTTPURL              string
+	InfuseURL            string
+	LogsURL              string
 	AllocMB              uint64
 	TotalAllocMB         uint64
 	SysMB                uint64
@@ -86,6 +88,8 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		FileCount:           fileCount,
 		WebDAVURL:           s.root + "/",
 		HTTPURL:             "/http/",
+		InfuseURL:           "/infuse/",
+		LogsURL:             "/logs/",
 		AllocMB:             mem.Alloc / 1024 / 1024,
 		TotalAllocMB:        mem.TotalAlloc / 1024 / 1024,
 		SysMB:               mem.Sys / 1024 / 1024,
