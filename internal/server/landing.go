@@ -41,6 +41,7 @@ type LandingData struct {
 	Uptime               string
 	FileCount            int
 	WebDAVURL            string
+	HTTPURL              string
 	AllocMB              uint64
 	TotalAllocMB         uint64
 	SysMB                uint64
@@ -84,6 +85,7 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		Uptime:              uptimeStr,
 		FileCount:           fileCount,
 		WebDAVURL:           s.root + "/",
+		HTTPURL:             "/http/",
 		AllocMB:             mem.Alloc / 1024 / 1024,
 		TotalAllocMB:        mem.TotalAlloc / 1024 / 1024,
 		SysMB:               mem.Sys / 1024 / 1024,

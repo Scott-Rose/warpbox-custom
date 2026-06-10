@@ -70,11 +70,15 @@ func (s *Server) versionHeader(next http.Handler) http.Handler {
 }
 
 // registerRoutes sets up the HTTP handlers for WebDAV methods,
-// the branded landing page, and the embedded favicon/logo.
+// the HTML browser, branded landing page, and embedded favicon/logo.
 func (s *Server) registerRoutes() {
 	handler := s.versionHeader(http.HandlerFunc(s.handleWebDAV))
 	s.mux.Handle(s.root+"/", handler)
 	s.mux.Handle(s.root, handler)
+
+	// Human-browsable HTML directory listing at /http/
+	s.mux.Handle("/http/", s.versionHeader(http.HandlerFunc(s.handleHTTP)))
+	s.mux.Handle("/http", s.versionHeader(http.HandlerFunc(s.handleHTTP)))
 
 	s.mux.Handle("/", s.versionHeader(http.HandlerFunc(s.handleLanding)))
 	s.mux.HandleFunc("/warpbox.png", s.handleLogo)
