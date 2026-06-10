@@ -2,6 +2,8 @@ package server
 
 import (
 	"testing"
+
+	"github.com/ben/warpbox/internal/metadata"
 )
 
 func TestParseRangeFull(t *testing.T) {
@@ -101,5 +103,30 @@ func TestParseRangeRejectsMultipleRanges(t *testing.T) {
 	// SplitN only splits on first -, so this will likely produce malformed parts.
 	if err == nil {
 		t.Log("multiple range rejection: expected error, got nil (split may have parsed first)")
+	}
+}
+
+func TestCdnCacheKeyTorrent(t *testing.T) {
+	key := cdnCacheKey(metadata.SourceTorrent, 100, 5)
+	want := "torrent:100:5"
+	if key != want {
+		t.Errorf("cdnCacheKey(torrent, 100, 5) = %q, want %q", key, want)
+	}
+}
+
+func TestCdnCacheKeyUsenet(t *testing.T) {
+	key := cdnCacheKey(metadata.SourceUsenet, 200, 5)
+	want := "usenet:200:5"
+	if key != want {
+		t.Errorf("cdnCacheKey(usenet, 200, 5) = %q, want %q", key, want)
+	}
+}
+
+func TestCdnCacheKeyDifferentiation(t *testing.T) {
+	// Same IDs, different source should produce different keys.
+	torKey := cdnCacheKey(metadata.SourceTorrent, 42, 7)
+	usenetKey := cdnCacheKey(metadata.SourceUsenet, 42, 7)
+	if torKey == usenetKey {
+		t.Error("torrent and usenet keys should differ with same item_id and file_id")
 	}
 }

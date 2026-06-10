@@ -99,16 +99,16 @@ type Torrent struct {
 // ListFiles
 // ---------------------------------------------------------------------------
 
-// ListFilesParams are optional query parameters for GetTorrentList.
+// ListFilesParams are optional query parameters for list endpoints.
 type ListFilesParams struct {
 	BypassCache bool
 	Offset      int
 	Limit       int
 }
 
-// ListFiles returns all torrents and their files from the user's TorBox account.
-func (c *Client) ListFiles(ctx context.Context, params ListFilesParams) ([]Torrent, error) {
-	u, _ := url.Parse(c.baseURL + "/v1/api/torrents/mylist")
+// listGeneric calls any mylist-style endpoint and decodes the response.
+func (c *Client) listGeneric(ctx context.Context, endpoint, label string, params ListFilesParams) ([]Torrent, error) {
+	u, _ := url.Parse(c.baseURL + endpoint)
 	q := u.Query()
 	q.Set("bypass_cache", strconv.FormatBool(params.BypassCache))
 	q.Set("offset", strconv.Itoa(params.Offset))
@@ -119,11 +119,11 @@ func (c *Client) ListFiles(ctx context.Context, params ListFilesParams) ([]Torre
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
 	if err != nil {
-		return nil, fmt.Errorf("torbox: creating request: %w", err)
+		return nil, fmt.Errorf("torbox: creating %s request: %w", label, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 
-	slog.Debug("torbox.ListFiles", "offset", params.Offset, "limit", params.Limit)
+	slog.Debug("torbox."+label, "offset", params.Offset, "limit", params.Limit)
 
 	body, err := c.do(req)
 	if err != nil {
@@ -132,16 +132,27 @@ func (c *Client) ListFiles(ctx context.Context, params ListFilesParams) ([]Torre
 
 	var env apiResponse[[]Torrent]
 	if err := json.Unmarshal(body, &env); err != nil {
-		return nil, fmt.Errorf("torbox: decoding response: %w", err)
+		return nil, fmt.Errorf("torbox: decoding %s response: %w", label, err)
 	}
 
 	if env.Error != nil && *env.Error != "" {
-		return nil, fmt.Errorf("torbox API error: %s", *env.Error)
+		return nil, fmt.Errorf("torbox %s API error: %s", label, *env.Error)
 	}
 
 	n := len(env.Data)
-	slog.Debug("torbox.ListFiles result", "torrents", n)
+	slog.Debug("torbox."+label+" result", label, n)
 	return env.Data, nil
+}
+
+// ListTorrents returns all torrents and their files from the user's TorBox account.
+func (c *Client) ListTorrents(ctx context.Context, params ListFilesParams) ([]Torrent, error) {
+	return c.listGeneric(ctx, "/v1/api/torrents/mylist", "torrents", params)
+}
+
+// ListUsenet returns all Usenet downloads from the user's TorBox account.
+// The API returns the same JSON structure as torrents, so we reuse Torrent.
+func (c *Client) ListUsenet(ctx context.Context, params ListFilesParams) ([]Torrent, error) {
+	return c.listGeneric(ctx, "/v1/api/usenet/mylist", "usenet", params)
 }
 
 // ---------------------------------------------------------------------------
@@ -181,6 +192,42 @@ func (c *Client) GetDownloadURL(ctx context.Context, torrentID, fileID int64, re
 	}
 
 	slog.Debug("torbox.GetDownloadURL result", "has_url", env.Data != "")
+	return env.Data, nil
+}
+
+// GetUsenetDownloadURL returns a CDN download URL for the given file in a
+// Usenet download. Uses /v1/api/usenet/requestdl instead of the torrent endpoint.
+func (c *Client) GetUsenetDownloadURL(ctx context.Context, usenetID, fileID int64, redirect bool) (string, error) {
+	u, _ := url.Parse(c.baseURL + "/v1/api/usenet/requestdl")
+	q := u.Query()
+	q.Set("token", c.apiKey)
+	q.Set("usenet_id", strconv.FormatInt(usenetID, 10))
+	q.Set("file_id", strconv.FormatInt(fileID, 10))
+	q.Set("redirect", strconv.FormatBool(redirect))
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
+	if err != nil {
+		return "", fmt.Errorf("torbox: creating usenet request: %w", err)
+	}
+
+	slog.Debug("torbox get_usenet_download_url", "usenet_id", usenetID, "file_id", fileID)
+
+	body, err := c.do(req)
+	if err != nil {
+		return "", err
+	}
+
+	var env apiResponse[string]
+	if err := json.Unmarshal(body, &env); err != nil {
+		return "", fmt.Errorf("torbox: decoding usenet response: %w", err)
+	}
+
+	if env.Error != nil && *env.Error != "" {
+		return "", fmt.Errorf("torbox usenet API error: %s", *env.Error)
+	}
+
+	slog.Debug("torbox get_usenet_download_url result", "has_url", env.Data != "")
 	return env.Data, nil
 }
 

@@ -130,6 +130,65 @@ func TestGetDownloadURLSuccess(t *testing.T) {
 	}
 }
 
+func TestGetUsenetDownloadURLSuccess(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/api/usenet/requestdl" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("token") != "test-key" {
+			t.Errorf("expected token param, got %q", r.URL.Query().Get("token"))
+		}
+		if r.URL.Query().Get("usenet_id") != "1644029" {
+			t.Errorf("expected usenet_id=1644029, got %s", r.URL.Query().Get("usenet_id"))
+		}
+		if r.URL.Query().Get("file_id") != "7" {
+			t.Errorf("expected file_id=7, got %s", r.URL.Query().Get("file_id"))
+		}
+		if r.URL.Query().Get("torrent_id") != "" {
+			t.Errorf("unexpected torrent_id param for usenet endpoint: %s", r.URL.Query().Get("torrent_id"))
+		}
+
+		resp := apiResponse[string]{
+			Data:    "https://cdn.torbox.app/usenet/dl/xyz789",
+			Success: boolPtr(true),
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL, "test-key")
+	url, err := client.GetUsenetDownloadURL(context.Background(), 1644029, 7, false)
+	if err != nil {
+		t.Fatalf("GetUsenetDownloadURL failed: %v", err)
+	}
+	if url != "https://cdn.torbox.app/usenet/dl/xyz789" {
+		t.Errorf("got %q, want %q", url, "https://cdn.torbox.app/usenet/dl/xyz789")
+	}
+}
+
+func TestGetUsenetDownloadURLEmpty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/api/usenet/requestdl" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("usenet_id") != "5" {
+			t.Errorf("expected usenet_id=5, got %s", r.URL.Query().Get("usenet_id"))
+		}
+		resp := apiResponse[string]{Data: "", Success: boolPtr(true)}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL, "key")
+	url, err := client.GetUsenetDownloadURL(context.Background(), 5, 1, false)
+	if err != nil {
+		t.Fatalf("GetUsenetDownloadURL failed: %v", err)
+	}
+	if url != "" {
+		t.Errorf("expected empty URL, got %q", url)
+	}
+}
+
 func TestClientRecoversAfterErrors(t *testing.T) {
 	// Simulate a server that returns error then success.
 	callCount := 0

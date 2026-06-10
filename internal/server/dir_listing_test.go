@@ -20,9 +20,9 @@ func TestServeDirListingRoot(t *testing.T) {
 
 	// Seed some files.
 	files := []metadata.FileRecord{
-		{TorrentID: 1, FileID: 10, Name: "file1.mkv", Path: "Movie.A/file1.mkv", Size: 1000, MimeType: "video/x-matroska"},
-		{TorrentID: 1, FileID: 11, Name: "file2.mkv", Path: "Movie.A/file2.mkv", Size: 2000, MimeType: "video/x-matroska"},
-		{TorrentID: 2, FileID: 20, Name: "ep1.mkv",  Path: "Show.B/ep1.mkv", Size: 500, MimeType: "video/x-matroska"},
+		{ItemID: 1, FileID: 10, Source: metadata.SourceTorrent, Name: "file1.mkv", Path: "Movie.A/file1.mkv", Size: 1000, MimeType: "video/x-matroska"},
+		{ItemID: 1, FileID: 11, Source: metadata.SourceTorrent, Name: "file2.mkv", Path: "Movie.A/file2.mkv", Size: 2000, MimeType: "video/x-matroska"},
+		{ItemID: 2, FileID: 20, Source: metadata.SourceTorrent, Name: "ep1.mkv",  Path: "Show.B/ep1.mkv", Size: 500, MimeType: "video/x-matroska"},
 	}
 	for _, f := range files {
 		if err := store.UpsertFile(f); err != nil {
@@ -81,7 +81,7 @@ func TestServeDirListingSubdir(t *testing.T) {
 	defer store.Close()
 
 	files := []metadata.FileRecord{
-		{TorrentID: 1, FileID: 10, Name: "file1.mkv", Path: "Movie.A/file1.mkv", Size: 1000, MimeType: "video/x-matroska"},
+		{ItemID: 1, FileID: 10, Source: metadata.SourceTorrent, Name: "file1.mkv", Path: "Movie.A/file1.mkv", Size: 1000, MimeType: "video/x-matroska"},
 	}
 	for _, f := range files {
 		if err := store.UpsertFile(f); err != nil {
@@ -161,14 +161,14 @@ func TestServeDirListingNestedPaths(t *testing.T) {
 	// This creates a nested structure: TorrentName/SubDir/File.ext
 	files := []metadata.FileRecord{
 		// A torrent with nested subdirectories (the common case from the bug report)
-		{TorrentID: 1, FileID: 10, Name: "The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW.mkv",
+		{ItemID: 1, FileID: 10, Source: metadata.SourceTorrent, Name: "The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW.mkv",
 			Path: "The.Studio.2025.S01.MULTi.1080p.WEB.H265-FW/The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW/The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW.mkv",
 			Size: 1000, MimeType: "video/x-matroska"},
-		{TorrentID: 1, FileID: 11, Name: "The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW.nfo",
+		{ItemID: 1, FileID: 11, Source: metadata.SourceTorrent, Name: "The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW.nfo",
 			Path: "The.Studio.2025.S01.MULTi.1080p.WEB.H265-FW/The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW/The.Studio.2025.S01E02.MULTi.1080p.WEB.H265-FW.nfo",
 			Size: 500, MimeType: "text/plain"},
 		// A torrent where files are directly at the root (normal case)
-		{TorrentID: 2, FileID: 20, Name: "movie.mkv",
+		{ItemID: 2, FileID: 20, Source: metadata.SourceTorrent, Name: "movie.mkv",
 			Path: "Simple.Movie/movie.mkv",
 			Size: 2000, MimeType: "video/x-matroska"},
 	}
@@ -254,7 +254,7 @@ func TestServeDirListingGETRootNoSlash(t *testing.T) {
 	defer store.Close()
 
 	files := []metadata.FileRecord{
-		{TorrentID: 1, FileID: 10, Name: "file.mkv", Path: "Torrent/file.mkv", Size: 1000, MimeType: "video/x-matroska"},
+		{ItemID: 1, FileID: 10, Source: metadata.SourceTorrent, Name: "file.mkv", Path: "Torrent/file.mkv", Size: 1000, MimeType: "video/x-matroska"},
 	}
 	for _, f := range files {
 		if err := store.UpsertFile(f); err != nil {
