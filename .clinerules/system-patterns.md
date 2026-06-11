@@ -56,28 +56,11 @@ Plex/Jellyfin → rclone (FUSE mount) → WebDAV → Warpbox → TorBox API
 
 ## 8. Project Board Operations (Kanban)
 
-* **Gitea has no REST API for project boards.** API tokens return 404 on all
-  board endpoints. Do NOT attempt to implement board operations via HTTP calls
-  to the Gitea web UI — this has been attempted and failed repeatedly.
-* The `extea.exe` CLI tool (`C:\Users\user\Documents\Cline\MCP\extea\extea.exe`)
-  manages board operations via web session auth. It requires an interactive TTY,
-  but the AI assistant can invoke it through `pwsh` (PowerShell 7) using
-  `execute_command` with `requires_approval: true`:
-  ```
-  pwsh -noprofile -Command "$env:GITEA_PASSWORD='...'; & 'extea.exe' ..."
-  ```
-  Boards are no longer limited to the Gitea web UI.
+* **Gitea has no REST API for project boards.** Use the `gitea-unified` MCP
+  server's `board_projects`, `board_columns`, and `board_issues` tools. These
+  return `pwsh` command strings that must be invoked via `execute_command`
+  with `requires_approval: true` (extea requires an interactive TTY).
 * Tea login config: `C:\Users\user\.config\tea\config.yml` (login: `cline`)
-* For reference, the extea commands (used via pwsh) are:
-  ```
-  extea projects list -r ben/warpbox -l cline -o json
-  extea projects view 1 -r ben/warpbox -l cline -o json
-  extea projects move 1 --column 3 --issue NUM -r ben/warpbox -l cline
-  extea columns create --project 1 --title "Backlog" -r ben/warpbox -l cline
-  extea columns list --project 1 -r ben/warpbox -l cline -o json
-  extea projects assign 1 --issue NUM -r ben/warpbox -l cline
-  extea projects unassign --issue NUM -r ben/warpbox -l cline
-  ```
 * Issue tracking relies solely on labels (`status:*` or type labels), milestone
   assignment, and the Gitea Issue tracker.
 
