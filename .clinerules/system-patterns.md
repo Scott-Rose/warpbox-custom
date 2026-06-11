@@ -72,3 +72,10 @@ Plex/Jellyfin → rclone (FUSE mount) → WebDAV → Warpbox → TorBox API
   continually updated over time (e.g., a test plan), it belongs in the Wiki.
 * When an issue's scope expands into a living document, create a Wiki page
   and link it from the issue.
+
+## 10. Kanban Board — Done Column Is Authoritative
+
+* The ✅ Done column on the "Warpbox Kanban" board is the single source of truth for completed work.
+* When a closed issue is discovered that is NOT on the board (e.g., closed before the board existed), it MUST be assigned to the project and moved to ✅ Done.
+* This keeps the board complete and the Done column as an achievement log.
+* The Done column can accumulate indefinitely — Gitea lazy-loads columns and there is no performance penalty for hundreds of items.
