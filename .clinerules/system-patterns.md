@@ -58,9 +58,16 @@ Plex/Jellyfin → rclone (FUSE mount) → WebDAV → Warpbox → TorBox API
 
 * **Gitea has no REST API for project boards.** Use the `gitea-unified` MCP
   server's `board_projects`, `board_columns`, and `board_issues` tools. These
-  return `pwsh` command strings that must be invoked via `execute_command`
-  with `requires_approval: true` (extea requires an interactive TTY).
-* Tea login config: `C:\Users\user\.config\tea\config.yml` (login: `cline`)
+  execute operations directly inside the Python MCP process via an authenticated
+  web session (`BoardSession` class using cookie + CSRF auth). No pwsh/extea
+  or `execute_command` is needed.
+* **Required environment variables:** `GITEA_USERNAME`, `GITEA_PASSWORD` (for
+  board operations), `GITEA_TOKEN` (for REST API).
+* Board operations are synchronous and return JSON results directly — the AI
+  assistant can call `board_columns(list, ...)` and inspect the parsed columns
+  list immediately.
+* See D-014 in `decision-log.md` for the full route map (reverse-engineered from
+  Gitea 1.25.5 `routers/web/web.go`).
 * Issue tracking relies solely on labels (`status:*` or type labels), milestone
   assignment, and the Gitea Issue tracker.
 

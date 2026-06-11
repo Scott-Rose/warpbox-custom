@@ -134,21 +134,38 @@
 - **Rationale:** Works with the current production image without rebuilding it. The entrypoint script is still valuable for future images (cleaner pattern), but `docker exec` is needed for backward compatibility.
 - **Outcome:** Step 5 of `dev-deploy script` now does `docker exec warpbox cp /data/warpbox-next /usr/local/bin/warpbox` followed by `docker restart warpbox`. Verified working.
 
-## D-012: extea via pwsh + execute_command
+## D-012: extea via pwsh + execute_command (SUPERSEDED BY D-014)
 
-- **Date:** 2026-06-11
+- **Date:** 2026-06-11 (superseded 2026-06-11)
 - **Context:** The AI assistant needed to manage Gitea project board columns from a headless Cline background process. extea requires an interactive TTY (isatty()), which isn't available in background exec mode.
 - **Decision:** Invoke extea.exe through `pwsh -noprofile -Command` via `execute_command` with `requires_approval: true`. PowerShell 7 provides a foreground terminal handle that satisfies isatty().
-- **Rationale:**
-  - AllocConsole/CREATE_NEW_CONSOLE approaches in Go and C could create a console handle but couldn't capture output — stdout went to the invisible console, not the caller.
-  - ConPTY wrappers crashed due to Windows API calling convention issues with syscall/unsafe.
-  - pwsh spawns a real foreground terminal with stdout/stderr pipes intact, resolving both the TTY requirement and output capture.
-  - PS7 was already installed (TLS 1.3+ capable) — no new dependencies.
-- **Usage pattern:**
-  ```
-  pwsh -noprofile -Command "$env:GITEA_PASSWORD='...'; & 'extea.exe' projects list -r ben/warpbox -l cline -o json"
-  ```
-- **Outcome:** All kanban board operations work. Updated `.clinerules/system-patterns.md` §8 to document the pwsh-based approach. Created the 6 kanban columns (Backlog, Research/Spikes, Ready to Dev, In Progress, Review/QA, Done) that were previously missing.
+- **Outcome:** Superseded by D-014. The Python web session approach is faster, does not require pwsh/extea, and does not need `requires_approval: true`.
+
+## D-014: Python web session for project board operations
+
+- **Date:** 2026-06-11
+- **Context:** D-012's extea+pwsh approach required `execute_command` with `requires_approval: true` for every board operation, slowing down the workflow. The previous Python web session attempt (D-009) failed because the column `create` endpoint couldn't be found (HTTP 500/405 errors).
+- **Decision:** Implement board CRUD via direct Python web session (cookie + CSRF auth) using the correct Gitea web UI routes, reverse-engineered from the Gitea 1.25.5 source code.
+- **Routes discovered from Gitea 1.25.5 source (`routers/web/web.go`):**
+  - `POST /{owner}/{repo}/projects/{id}/columns/new` → `AddColumnToProjectPost`
+  - `PUT /{owner}/{repo}/projects/{id}/{columnID}` → `EditProjectColumn`
+  - `DELETE /{owner}/{repo}/projects/{id}/{columnID}` → `DeleteProjectColumn`
+  - `POST /{owner}/{repo}/projects/{id}/{columnID}/default` → `SetDefaultProjectColumn`
+  - `POST /{owner}/{repo}/projects/{id}/move` → `MoveColumns` (also for issue moves, body varies)
+  - `POST /{owner}/{repo}/projects/new` → `NewProjectPost`
+  - `POST /{owner}/{repo}/projects/{id}/edit` → `EditProjectPost`
+  - `POST /{owner}/{repo}/projects/{id}/delete` → `DeleteProject`
+  - `POST /{owner}/{repo}/projects/{id}/{open|close}` → `ChangeProjectStatus`
+- **Key details:**
+  - Column creation sends form-encoded data (`_csrf`, `id`=empty, `title`, `color`) → returns `{"ok":true}`
+  - Column edit uses HTTP `PUT` with form body
+  - Column delete uses HTTP `DELETE` with CSRF in header
+  - Issue moves send JSON body with `issues[{issueID, sorting}]`
+  - CSRF token extracted from `window.config.csrfToken` on the board page
+  - Login uses standard login form POST with `_csrf`, `user_name`, `password`
+- **Outcome:** The `gitea-unified` MCP server's `board_projects`, `board_columns`, and `board_issues` tools now execute board operations directly inside the Python process, without requiring pwsh/extea or `execute_command`. The `login` parameter was removed (no longer needed). extea references in `server.py` were deleted.
+- **Cleanup:** The `_EXTEA`, `_PWSH_TEMPLATE`, and `_pwsh_cmd()` artifacts were removed from `server.py`. The `board_edit.html` analysis files in `C:\Users\user\Documents\Cline\MCP\gitea-unified\` are now obsolete.
+- **Issue:** #74
 
 ## D-013: "Slow disk" hang instead of error when CDN is unavailable
 
