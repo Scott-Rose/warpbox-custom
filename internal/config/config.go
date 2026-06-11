@@ -45,6 +45,12 @@ type CacheConfig struct {
 	CircuitBreakerFailures  *int `yaml:"circuit_breaker_failures"`   // Max failures in window before stalling; nil→default 5
 	CircuitBreakerWindowSec *int `yaml:"circuit_breaker_window_seconds"` // Sliding window for failure count; nil→default 60
 	CircuitBreakerStaleMin  *int `yaml:"circuit_breaker_stale_minutes"` // Duration a stale torrent is skipped; nil→default 5
+
+	// Memory management settings.
+	NegativeCacheMaxEntries *int `yaml:"negative_cache_max_entries"` // Max entries in negative cache; nil→default 5000
+	CircuitBreakerMaxEntries *int `yaml:"circuit_breaker_max_entries"` // Max entries in circuit breaker; nil→default 2000
+	CleanupIntervalSeconds  *int `yaml:"cleanup_interval_seconds"`  // How often to sweep expired entries; nil→default 60
+	MemoryStatsIntervalMin  *int `yaml:"memory_stats_interval_minutes"` // How often to log memory stats; nil→default 5
 }
 
 // ThrottleConfig holds rate-limiting settings.
@@ -144,6 +150,22 @@ func setDefaults(c *Config) {
 		n := 5
 		c.Cache.CircuitBreakerStaleMin = &n
 	}
+	if c.Cache.NegativeCacheMaxEntries == nil {
+		n := 5000
+		c.Cache.NegativeCacheMaxEntries = &n
+	}
+	if c.Cache.CircuitBreakerMaxEntries == nil {
+		n := 2000
+		c.Cache.CircuitBreakerMaxEntries = &n
+	}
+	if c.Cache.CleanupIntervalSeconds == nil {
+		n := 60
+		c.Cache.CleanupIntervalSeconds = &n
+	}
+	if c.Cache.MemoryStatsIntervalMin == nil {
+		n := 5
+		c.Cache.MemoryStatsIntervalMin = &n
+	}
 }
 
 // validate checks that required fields are present.
@@ -197,6 +219,30 @@ func validate(c *Config) error {
 		r := *c.Cache.CircuitBreakerStaleMin
 		if r < 1 || r > 60 {
 			return fmt.Errorf("cache.circuit_breaker_stale_minutes must be 1–60, got %d", r)
+		}
+	}
+	if c.Cache.NegativeCacheMaxEntries != nil {
+		r := *c.Cache.NegativeCacheMaxEntries
+		if r < 100 || r > 50000 {
+			return fmt.Errorf("cache.negative_cache_max_entries must be 100–50000, got %d", r)
+		}
+	}
+	if c.Cache.CircuitBreakerMaxEntries != nil {
+		r := *c.Cache.CircuitBreakerMaxEntries
+		if r < 50 || r > 20000 {
+			return fmt.Errorf("cache.circuit_breaker_max_entries must be 50–20000, got %d", r)
+		}
+	}
+	if c.Cache.CleanupIntervalSeconds != nil {
+		r := *c.Cache.CleanupIntervalSeconds
+		if r < 10 || r > 3600 {
+			return fmt.Errorf("cache.cleanup_interval_seconds must be 10–3600, got %d", r)
+		}
+	}
+	if c.Cache.MemoryStatsIntervalMin != nil {
+		r := *c.Cache.MemoryStatsIntervalMin
+		if r < 1 || r > 60 {
+			return fmt.Errorf("cache.memory_stats_interval_minutes must be 1–60, got %d", r)
 		}
 	}
 	return nil

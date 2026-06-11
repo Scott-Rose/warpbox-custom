@@ -134,6 +134,7 @@
     <tr><td>Allocated</td><td>{{.AllocMB}} MB</td></tr>
     <tr><td>Total allocated</td><td>{{.TotalAllocMB}} MB</td></tr>
     <tr><td>System memory</td><td>{{.SysMB}} MB</td></tr>
+    <tr><td>Heap objects</td><td>{{.HeapObjects}}</td></tr>
     <tr><td>GC cycles</td><td>{{.NumGC}}</td></tr>
   </table>
 
@@ -146,10 +147,14 @@
   <table>
     <tr><th colspan="2">Cache</th></tr>
     <tr><td>Max RAM</td><td>{{.MaxRAMMB}} MB</td></tr>
+    <tr><td>Currently used</td><td>{{.CacheUsedMB}} MB</td></tr>
+    <tr><td>Chunks cached</td><td>{{.CacheEntries}}</td></tr>
     <tr><td>Chunk size</td><td>{{.ChunkSizeMB}} MB</td></tr>
     <tr><td>TTL</td><td>{{.TTLSeconds}} s</td></tr>
     <tr><td>Eviction strategy</td><td>{{.EvictionStrategy}}</td></tr>
     <tr><td>CDN URL TTL</td><td>{{.CDNURLTTLMinutes}} min</td></tr>
+    <tr><td>Negative cache</td><td>{{.NegativeCacheSize}} entries</td></tr>
+    <tr><td>Circuit breaker</td><td>{{.CircuitBreakerSize}} entries</td></tr>
   </table>
 
   <table>

@@ -146,21 +146,14 @@ cache:
   # Optional. Default: 5. Valid range: 1–60.
   memory_stats_interval_minutes: 5
 
-  # Maximum number of concurrent CDN proxy connections.
-  # Each connection streams a 32MB chunk from the TorBox CDN. Setting this
-  # too high may cause CDN connection throttling (429 errors).
-  # Optional. Default: 4. Valid range: 1–64.
-  max_cdn_connections: 4
-
 # ---------------------------------------------------------------------------
 # Rate-Limiting / Throttle
 # ---------------------------------------------------------------------------
 throttle:
   # Maximum number of API requests allowed per minute to TorBox.
-  # TorBox enforces a 300 requests/minute hard limit. Setting this higher
-  # than 300 is allowed in the config for flexibility but may result in
-  # rate-limit errors from TorBox.
-  # Optional. Default: 250. Valid range: 10–1000.
+  # TorBox enforces a 300 requests/minute hard limit. Set this lower to
+  # maintain a safety margin.
+  # Optional. Default: 250. Valid range: 10–290.
   requests_per_minute: 250
 
 # ---------------------------------------------------------------------------
@@ -177,12 +170,11 @@ logging:
 
   # Log verbosity level.
   # - "debug" — Verbose logging including every PROPFIND/GET/HEAD request.
-  #   Only use temporarily for troubleshooting — significantly increases CPU.
-  # - "info" — Normal operational messages. Recommended for production.
+  # - "info" — Normal operational messages.
   # - "warn" — Warning conditions.
   # - "error" — Error conditions only.
   # Optional. Default: "info".
-  level: "info"
+  level: "debug"
 
 # ---------------------------------------------------------------------------
 # Metadata Sync

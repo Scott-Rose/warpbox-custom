@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -173,12 +174,15 @@ func main() {
 			LogFormat:             cfg.Logging.Format,
 			LogLevel:              cfg.Logging.Level,
 			SyncIntervalMinute:    cfg.Sync.IntervalMinutes,
-			CDNURLRetryBackoff:    *cfg.Cache.CDNURLRetryBackoff,
-			CDNURLRetryCount:      *cfg.Cache.CDNURLRetryCount,
-			NegativeCacheTTLSeconds: *cfg.Cache.NegativeCacheTTLSeconds,
-			CircuitBreakerFailures:  *cfg.Cache.CircuitBreakerFailures,
-			CircuitBreakerWindowSec: *cfg.Cache.CircuitBreakerWindowSec,
-			CircuitBreakerStaleMin:  *cfg.Cache.CircuitBreakerStaleMin,
+			CDNURLRetryBackoff:       *cfg.Cache.CDNURLRetryBackoff,
+			CDNURLRetryCount:         *cfg.Cache.CDNURLRetryCount,
+			NegativeCacheTTLSeconds:  *cfg.Cache.NegativeCacheTTLSeconds,
+			CircuitBreakerFailures:   *cfg.Cache.CircuitBreakerFailures,
+			CircuitBreakerWindowSec:  *cfg.Cache.CircuitBreakerWindowSec,
+			CircuitBreakerStaleMin:   *cfg.Cache.CircuitBreakerStaleMin,
+			NegativeCacheMaxEntries:  *cfg.Cache.NegativeCacheMaxEntries,
+			CircuitBreakerMaxEntries: *cfg.Cache.CircuitBreakerMaxEntries,
+			CleanupIntervalSeconds:   *cfg.Cache.CleanupIntervalSeconds,
 		},
 		metadataStore,
 		ramCache,
@@ -192,6 +196,35 @@ func main() {
 	go func() {
 		if err := srv.Start(ctx); err != nil {
 			serverErr <- err
+		}
+	}()
+
+	// Periodic memory and cache stats logging.
+	memStatsInterval := time.Duration(*cfg.Cache.MemoryStatsIntervalMin) * time.Minute
+	go func() {
+		memTicker := time.NewTicker(memStatsInterval)
+		defer memTicker.Stop()
+		for {
+			select {
+			case <-memTicker.C:
+				var mem runtime.MemStats
+				runtime.ReadMemStats(&mem)
+				cacheEntries, cacheUsed, cacheMax := srv.CacheStats()
+				slog.Info("memory stats",
+					"alloc_mb", mem.Alloc/(1024*1024),
+					"total_alloc_mb", mem.TotalAlloc/(1024*1024),
+					"sys_mb", mem.Sys/(1024*1024),
+					"gc_cycles", mem.NumGC,
+					"heap_objects", mem.HeapObjects,
+					"cache_entries", cacheEntries,
+					"cache_used_mb", cacheUsed/(1024*1024),
+					"cache_max_mb", cacheMax/(1024*1024),
+					"negative_cache", srv.NegativeCacheSize(),
+					"circuit_breaker", srv.CircuitBreakerSize(),
+				)
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
