@@ -33,24 +33,26 @@ type CacheConfig struct {
 	CDNURLRepairRetries *int  `yaml:"cdn_url_repair_retries"` // Max CDN proxy retries per request; nil→default 2
 
 	// CDN URL fetch retry settings (for TorBox API errors, not CDN proxy errors).
-	// These control how getCDNURLWithRetry behaves on 5xx/429 from TorBox.
-	CDNURLRetryBackoff *int `yaml:"cdn_url_retry_backoff"`   // Backoff base in seconds (e.g. 1 → 1s, 2s, 4s); nil→default 1
+	CDNURLRetryBackoff *int `yaml:"cdn_url_retry_backoff"`   // Backoff base in seconds; nil→default 1
 	CDNURLRetryCount   *int `yaml:"cdn_url_retry_attempts"`  // Max retry attempts; nil→default 1
 
 	// Negative cache: prevents Plex retry loop from hitting TorBox for recently-failed files.
 	NegativeCacheTTLSeconds *int `yaml:"negative_cache_ttl_seconds"` // How long to cache failed results; nil→default 30
 
-	// Circuit breaker: per-torrent failure tracking. Torrents exceeding the threshold
-	// are marked stale and skipped for all files within until stale period expires.
-	CircuitBreakerFailures  *int `yaml:"circuit_breaker_failures"`   // Max failures in window before stalling; nil→default 5
-	CircuitBreakerWindowSec *int `yaml:"circuit_breaker_window_seconds"` // Sliding window for failure count; nil→default 60
-	CircuitBreakerStaleMin  *int `yaml:"circuit_breaker_stale_minutes"` // Duration a stale torrent is skipped; nil→default 5
+	// Circuit breaker: per-torrent failure tracking.
+	CircuitBreakerFailures  *int `yaml:"circuit_breaker_failures"`   // Max failures in window; nil→default 5
+	CircuitBreakerWindowSec *int `yaml:"circuit_breaker_window_seconds"` // Sliding window; nil→default 60
+	CircuitBreakerStaleMin  *int `yaml:"circuit_breaker_stale_minutes"` // Stale duration; nil→default 5
 
 	// Memory management settings.
-	NegativeCacheMaxEntries *int `yaml:"negative_cache_max_entries"` // Max entries in negative cache; nil→default 5000
+	NegativeCacheMaxEntries  *int `yaml:"negative_cache_max_entries"` // Max entries in negative cache; nil→default 5000
 	CircuitBreakerMaxEntries *int `yaml:"circuit_breaker_max_entries"` // Max entries in circuit breaker; nil→default 2000
-	CleanupIntervalSeconds  *int `yaml:"cleanup_interval_seconds"`  // How often to sweep expired entries; nil→default 60
-	MemoryStatsIntervalMin  *int `yaml:"memory_stats_interval_minutes"` // How often to log memory stats; nil→default 5
+	CleanupIntervalSeconds   *int `yaml:"cleanup_interval_seconds"`  // Sweep interval; nil→default 60
+	MemoryStatsIntervalMin   *int `yaml:"memory_stats_interval_minutes"` // Memory logging interval; nil→default 5
+
+	// CDN proxy settings.
+	MinChunkBytes       *int `yaml:"min_chunk_bytes"`        // Skip caching chunks smaller than this; nil→default 16384
+	MaxCDNConnections   *int `yaml:"max_cdn_connections"`    // Max concurrent CDN proxy connections; nil→default 8
 }
 
 // ThrottleConfig holds rate-limiting settings.
@@ -105,6 +107,14 @@ func setDefaults(c *Config) {
 	}
 	if c.Throttle.RequestsPerMinute == 0 {
 		c.Throttle.RequestsPerMinute = 250
+	} else {
+		// Clamp to valid range; validation below provides the error.
+		if c.Throttle.RequestsPerMinute < 10 {
+			c.Throttle.RequestsPerMinute = 10
+		}
+		if c.Throttle.RequestsPerMinute > 1000 {
+			c.Throttle.RequestsPerMinute = 1000
+		}
 	}
 	if c.Logging.Format == "" {
 		c.Logging.Format = "text"
@@ -165,6 +175,14 @@ func setDefaults(c *Config) {
 	if c.Cache.MemoryStatsIntervalMin == nil {
 		n := 5
 		c.Cache.MemoryStatsIntervalMin = &n
+	}
+	if c.Cache.MinChunkBytes == nil {
+		n := 16384
+		c.Cache.MinChunkBytes = &n
+	}
+	if c.Cache.MaxCDNConnections == nil {
+		n := 8
+		c.Cache.MaxCDNConnections = &n
 	}
 }
 
@@ -245,11 +263,25 @@ func validate(c *Config) error {
 			return fmt.Errorf("cache.memory_stats_interval_minutes must be 1–60, got %d", r)
 		}
 	}
+	if c.Cache.MinChunkBytes != nil {
+		r := *c.Cache.MinChunkBytes
+		if r < 0 || r > 1024*1024 {
+			return fmt.Errorf("cache.min_chunk_bytes must be 0–1048576, got %d", r)
+		}
+	}
+	if c.Cache.MaxCDNConnections != nil {
+		r := *c.Cache.MaxCDNConnections
+		if r < 1 || r > 64 {
+			return fmt.Errorf("cache.max_cdn_connections must be 1–64, got %d", r)
+		}
+	}
+	if c.Throttle.RequestsPerMinute < 10 || c.Throttle.RequestsPerMinute > 1000 {
+		return fmt.Errorf("throttle.requests_per_minute must be 10–1000, got %d", c.Throttle.RequestsPerMinute)
+	}
 	return nil
 }
 
 // ParseLevel converts a string log level to slog.Level.
-// Valid values: "debug", "info", "warn", "error".
 func ParseLevel(s string) (slog.Level, error) {
 	switch strings.ToLower(s) {
 	case "debug":
@@ -268,15 +300,13 @@ func ParseLevel(s string) (slog.Level, error) {
 // GenerateTemplate writes a default config.yml to the given path if the
 // file does not already exist. The template content is read from
 // "config.yml.example" in the same directory as the target path.
-// Returns true if a new file was created.
 func GenerateTemplate(path string) (bool, error) {
 	if _, err := os.Stat(path); err == nil {
-		return false, nil // file already exists
+		return false, nil
 	} else if !os.IsNotExist(err) {
 		return false, fmt.Errorf("checking config file: %w", err)
 	}
 
-	// Read the example template from beside the target path.
 	examplePath := filepath.Join(filepath.Dir(path), "config.yml.example")
 	template, err := os.ReadFile(examplePath)
 	if err != nil {
@@ -289,8 +319,48 @@ func GenerateTemplate(path string) (bool, error) {
 	return true, nil
 }
 
+// UpdateLogLevel reads the config file, updates the logging level, and writes
+// it back atomically (temp file + rename). Returns the parsed slog.Level.
+func UpdateLogLevel(path string, newLevel string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("reading config file: %w", err)
+	}
+
+	// Parse into a generic map so we preserve all keys and comments.
+	// yaml.v3 preserves comments on round-trip.
+	cfg := &Config{}
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return fmt.Errorf("parsing config: %w", err)
+	}
+
+	// Validate the level.
+	_, err = ParseLevel(newLevel)
+	if err != nil {
+		return err
+	}
+
+	cfg.Logging.Level = newLevel
+
+	// Write to a temp file first, then rename for atomicity.
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshalling config: %w", err)
+	}
+
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, out, 0644); err != nil {
+		return fmt.Errorf("writing temp config: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("renaming temp config: %w", err)
+	}
+
+	return nil
+}
+
 // Load reads and parses the YAML config file at the given path.
-// It applies defaults for any missing optional fields.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

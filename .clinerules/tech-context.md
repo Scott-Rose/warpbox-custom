@@ -12,11 +12,14 @@
 
 * Although the CICD pipeline is set up, it takes some time to build and release, and then deploy into docker.
 * For most iterative development, use a locally built .exe and rclone.exe to test basic WebDAV behaviour
-  without touching production:
-  ```
-  go build -o warpbox.exe ./cmd/warpbox/
+  without touching production.
+* Include a UTC build timestamp in the version string so you can tell which dev build is running:
+  ```powershell
+  $ts = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss\Z')
+  go build -ldflags="-X main.Version=dev-$ts" -o warpbox.exe ./cmd/warpbox/
   .\warpbox.exe --config config.yml --db test.db
   ```
+  The version can be verified with `.\warpbox.exe --version` or in the startup log line.
 * For integration testing that requires the real Plex/rclone stack on REDACTED (WebDAV performance,
   VFS caching, CDN hot-swap timing), use the dev-deploy hot-swap script:
   ```

@@ -151,9 +151,10 @@ cache:
 # ---------------------------------------------------------------------------
 throttle:
   # Maximum number of API requests allowed per minute to TorBox.
-  # TorBox enforces a 300 requests/minute hard limit. Set this lower to
-  # maintain a safety margin.
-  # Optional. Default: 250. Valid range: 10–290.
+  # TorBox enforces a 300 requests/minute hard limit. Setting this higher
+  # than 300 is allowed in the config for flexibility but may result in
+  # rate-limit errors from TorBox.
+  # Optional. Default: 250. Valid range: 10–1000.
   requests_per_minute: 250
 
 # ---------------------------------------------------------------------------
@@ -170,11 +171,12 @@ logging:
 
   # Log verbosity level.
   # - "debug" — Verbose logging including every PROPFIND/GET/HEAD request.
-  # - "info" — Normal operational messages.
+  #   Only use temporarily for troubleshooting — significantly increases CPU.
+  # - "info" — Normal operational messages. Recommended for production.
   # - "warn" — Warning conditions.
   # - "error" — Error conditions only.
   # Optional. Default: "info".
-  level: "debug"
+  level: "info"
 
 # ---------------------------------------------------------------------------
 # Metadata Sync

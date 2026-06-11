@@ -212,14 +212,19 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", srvRange.Start, srvRange.End, file.Size))
 		w.WriteHeader(http.StatusPartialContent)
 
-		// Use a bytes.Buffer to capture the response for caching, while
-		// simultaneously streaming to the client via TeeReader.
-		var cacheBuf bytes.Buffer
-		tee := io.TeeReader(proxyResp.Body, &cacheBuf)
+		// Acquire a CDN connection slot to prevent excessive concurrent
+		// connections from causing TorBox CDN 429s.
+		s.AcquireCDNConn()
+
+		// Pre-size the buffer to the known chunk length to avoid incremental
+		// heap reallocations (bytes.Buffer grows by doubling from nil).
+		cacheBuf := bytes.NewBuffer(make([]byte, 0, srvRange.Length))
+		tee := io.TeeReader(proxyResp.Body, cacheBuf)
 
 		// Stream from CDN → client (via TeeReader which also writes to cacheBuf).
 		written, copyErr := io.Copy(w, tee)
 		proxyResp.Body.Close()
+		s.ReleaseCDNConn()
 
 		if copyErr != nil {
 			slog.Error("GET: error streaming CDN data",
@@ -230,9 +235,12 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Cache the chunk in RAM. The bytes.Buffer contains the complete
-		// response data captured during the stream.
-		s.cache.Put(int(file.ID), srvRange.Start, cacheBuf.Bytes())
+		// Cache the chunk in RAM — but only if it's above the minimum size
+		// threshold. Tiny chunks (e.g. Plex's 5.6KB end-of-file metadata reads)
+		// waste cache slots and cause churn for no benefit.
+		if srvRange.Length >= int64(s.MinChunkBytes()) {
+			s.cache.Put(int(file.ID), srvRange.Start, cacheBuf.Bytes())
+		}
 		return
 	}
 

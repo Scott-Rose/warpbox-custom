@@ -1,10 +1,12 @@
 // Actions — POST endpoints for runtime operations accessible from the
-// landing page as buttons (e.g., resync metadata, clear RAM cache).
+// landing page as buttons (e.g., resync metadata, clear RAM cache, toggle log level).
 package server
 
 import (
 	"log/slog"
 	"net/http"
+
+	"github.com/ben/warpbox/internal/config"
 )
 
 // ActionFunc is a callback that an action button triggers.
@@ -32,6 +34,8 @@ func (s *Server) handleActions(w http.ResponseWriter, r *http.Request) {
 		s.handleResync(w, r)
 	case "/actions/clearcache":
 		s.handleClearCache(w, r)
+	case "/actions/loglevel":
+		s.handleLogLevel(w, r)
 	default:
 		http.NotFound(w, r)
 	}
@@ -73,4 +77,41 @@ func (s *Server) handleClearCache(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Cache cleared\n"))
+}
+
+// handleLogLevel changes the runtime log level and persists it to config.yml.
+// Accepts form value "level=debug|info|warn|error".
+func (s *Server) handleLogLevel(w http.ResponseWriter, r *http.Request) {
+	newLevel := r.FormValue("level")
+	if newLevel == "" {
+		http.Error(w, "Missing 'level' parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Validate and parse the level.
+	parsedLevel, err := config.ParseLevel(newLevel)
+	if err != nil {
+		http.Error(w, "Invalid level: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Persist to config file.
+	cfgPath := s.ConfigPath()
+	if cfgPath != "" {
+		if err := config.UpdateLogLevel(cfgPath, newLevel); err != nil {
+			slog.Error("action: failed to persist log level to config", "path", cfgPath, "error", err)
+			http.Error(w, "Failed to persist log level", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Atomically swap the log level at runtime via LevelVar.
+	// This takes effect immediately for all slog handlers that reference it.
+	s.cfg.LevelVar.Set(parsedLevel)
+
+	slog.Info("action: log level changed", "level", newLevel)
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Log level changed to " + newLevel + "\n"))
 }

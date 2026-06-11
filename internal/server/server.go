@@ -50,20 +50,28 @@ type Server struct {
 	syncStatus SyncStatusFunc
 
 	// Negative cache: key = "torrentID:fileID", value = error + expiry.
-	// Protects against Plex's tight retry loop burning API quota on known-bad files.
 	negativeCache   map[string]*negativeCacheEntry
 	negativeCacheMu sync.Mutex
 
 	// Circuit breaker: per-torrent failure tracking.
-	// Marked stale after maxTorrentFailures in the sliding window.
 	torrentFailures   map[int64]*torrentFailureTracker
 	torrentFailuresMu sync.Mutex
 
-		// Stop channel for periodic cleanup goroutines.
+	// CDN connection semaphore: limits concurrent proxy connections to TorBox CDN.
+	cdnSem chan struct{}
+
+	// Stop channel for periodic cleanup goroutines.
 	cleanupStopCh chan struct{}
+
 	// Configurable map size limits.
 	negativeCacheMaxEntries  int
 	circuitBreakerMaxEntries int
+
+	// Min chunk bytes to cache (tiny chunks skip cache).
+	minChunkBytes int
+
+	// Path to config file for runtime log level toggle.
+	configPath string
 }
 
 // Config holds the server-specific configuration.
@@ -71,9 +79,9 @@ type Config struct {
 	ListenAddr         string
 	WebDAVRoot         string
 	CDNTtlMinutes       int  // How long to cache CDN URLs (0 = disable)
-	CDNURLAutoRepair    bool // Auto-repair stale CDN URLs by re-fetching from TorBox
-	CDNURLRepairRetries int  // Max repair retries per request (0 = no retries)
-	Version            string // Build version, injected at compile time
+	CDNURLAutoRepair    bool // Auto-repair stale CDN URLs
+	CDNURLRepairRetries int  // Max repair retries per request
+	Version            string // Build version
 	MaxRAMMB           int    // For landing page display
 	ChunkSizeMB        int    // For landing page display
 	TTLSeconds         int    // For landing page display
@@ -99,10 +107,27 @@ type Config struct {
 	NegativeCacheMaxEntries  int // Max entries in negative cache; default 5000
 	CircuitBreakerMaxEntries int // Max entries in circuit breaker; default 2000
 	CleanupIntervalSeconds   int // How often to sweep expired entries; default 60
+
+	// CDN proxy settings.
+	MinChunkBytes     int // Skip caching chunks smaller than this; default 16384
+	MaxCDNConnections int // Max concurrent CDN proxy connections; default 8
+
+	// Path to config file for runtime log level toggle.
+	ConfigPath string
+
+	// LevelVar for atomic runtime log level switching. Shared with main.go's
+	// slog.HandlerOptions.Level so a Set() call takes effect immediately.
+	// Must be set by main.go after New() returns.
+	LevelVar *slog.LevelVar
 }
 
 // New creates a new WebDAV server.
 func New(cfg Config, store *metadata.Store, c *cache.Buffer, torBox *torbox.Client, queue *throttle.Queue) *Server {
+	maxConns := cfg.MaxCDNConnections
+	if maxConns < 1 {
+		maxConns = 8
+	}
+
 	s := &Server{
 		cfg:       cfg,
 		store:     store,
@@ -116,17 +141,43 @@ func New(cfg Config, store *metadata.Store, c *cache.Buffer, torBox *torbox.Clie
 		negativeCache:          make(map[string]*negativeCacheEntry),
 		torrentFailures:        make(map[int64]*torrentFailureTracker),
 		cleanupStopCh:          make(chan struct{}),
+		cdnSem:                 make(chan struct{}, maxConns),
 		negativeCacheMaxEntries:  cfg.NegativeCacheMaxEntries,
 		circuitBreakerMaxEntries: cfg.CircuitBreakerMaxEntries,
+		minChunkBytes:          cfg.MinChunkBytes,
+		configPath:             cfg.ConfigPath,
+	}
+	// Fill the semaphore so we can Acquire/Release.
+	for i := 0; i < maxConns; i++ {
+		s.cdnSem <- struct{}{}
 	}
 	s.registerRoutes()
 	s.startCleanupLoop()
 	return s
 }
 
+// AcquireCDNConn blocks until a CDN connection slot is available.
+func (s *Server) AcquireCDNConn() {
+	<-s.cdnSem
+}
+
+// ReleaseCDNConn returns a CDN connection slot.
+func (s *Server) ReleaseCDNConn() {
+	s.cdnSem <- struct{}{}
+}
+
+// MinChunkBytes returns the minimum chunk size (in bytes) for caching.
+func (s *Server) MinChunkBytes() int {
+	return s.minChunkBytes
+}
+
+// ConfigPath returns the path to the config file for runtime log level toggle.
+func (s *Server) ConfigPath() string {
+	return s.configPath
+}
+
 // startCleanupLoop runs a periodic background goroutine that sweeps expired
-// entries from the negative cache and circuit breaker maps. This prevents
-// unbounded memory growth from entries that are never looked up again.
+// entries from the negative cache and circuit breaker maps.
 func (s *Server) startCleanupLoop() {
 	interval := time.Duration(s.cfg.CleanupIntervalSeconds) * time.Second
 	if interval <= 0 {
@@ -159,18 +210,14 @@ func (s *Server) sweepNegativeCache() {
 	defer s.negativeCacheMu.Unlock()
 
 	now := time.Now()
-
-	// Remove expired entries.
 	for k, v := range s.negativeCache {
 		if now.After(v.expiresAt) {
 			delete(s.negativeCache, k)
 		}
 	}
 
-	// If still over limit, evict oldest entries.
 	if len(s.negativeCache) > s.negativeCacheMaxEntries {
 		over := len(s.negativeCache) - s.negativeCacheMaxEntries
-		// Collect keys sorted by expiry (oldest first).
 		type kv struct {
 			key       string
 			expiresAt time.Time
@@ -179,7 +226,6 @@ func (s *Server) sweepNegativeCache() {
 		for k, v := range s.negativeCache {
 			sorted = append(sorted, kv{key: k, expiresAt: v.expiresAt})
 		}
-		// Simple bubble of oldest to front — small O(n) is fine for cleanup.
 		for i := 0; i < len(sorted) && i < over; i++ {
 			oldest := i
 			for j := i + 1; j < len(sorted); j++ {
@@ -201,32 +247,27 @@ func (s *Server) sweepNegativeCache() {
 }
 
 // sweepCircuitBreaker removes trackers where the stale period has expired.
-// If the map exceeds maxCircuitBreakerEntries, the oldest are evicted.
 func (s *Server) sweepCircuitBreaker() {
 	s.torrentFailuresMu.Lock()
 	defer s.torrentFailuresMu.Unlock()
 
 	now := time.Now()
-
-	// Remove trackers whose stale period has expired.
 	for k, v := range s.torrentFailures {
 		if !v.staleUntil.IsZero() && now.After(v.staleUntil) {
 			delete(s.torrentFailures, k)
 		}
 	}
 
-	// If still over limit, evict oldest.
 	if len(s.torrentFailures) > s.circuitBreakerMaxEntries {
 		over := len(s.torrentFailures) - s.circuitBreakerMaxEntries
 		type kv struct {
-			key       int64
+			key        int64
 			staleUntil time.Time
 		}
 		sorted := make([]kv, 0, len(s.torrentFailures))
 		for k, v := range s.torrentFailures {
 			sorted = append(sorted, kv{key: k, staleUntil: v.staleUntil})
 		}
-		// Sort by staleUntil ascending — those already expired or oldest first.
 		for i := 0; i < len(sorted) && i < over; i++ {
 			oldest := i
 			for j := i + 1; j < len(sorted); j++ {
@@ -281,19 +322,15 @@ func (s *Server) registerRoutes() {
 	s.mux.Handle(s.root+"/", handler)
 	s.mux.Handle(s.root, handler)
 
-	// Human-browsable HTML directory listing at /http/
 	s.mux.Handle("/http/", s.versionHeader(http.HandlerFunc(s.handleHTTP)))
 	s.mux.Handle("/http", s.versionHeader(http.HandlerFunc(s.handleHTTP)))
 
-	// Infuse WebDAV endpoint (same content, different URL path).
 	s.mux.Handle("/infuse/", s.versionHeader(http.HandlerFunc(s.handleWebDAV)))
 	s.mux.Handle("/infuse", s.versionHeader(http.HandlerFunc(s.handleWebDAV)))
 
-	// Log viewer.
 	s.mux.Handle("/logs/", s.versionHeader(http.HandlerFunc(s.handleLogs)))
 	s.mux.Handle("/logs", s.versionHeader(http.HandlerFunc(s.handleLogs)))
 
-	// Action endpoints (POST-only).
 	s.mux.Handle("/actions/", s.versionHeader(http.HandlerFunc(s.handleActions)))
 
 	s.mux.Handle("/", s.versionHeader(http.HandlerFunc(s.handleLanding)))
@@ -302,8 +339,6 @@ func (s *Server) registerRoutes() {
 }
 
 // handleWebDAV dispatches WebDAV methods to the appropriate handler.
-// If the request comes via /infuse/, rewrite the path to the configured
-// WebDAV root so the sub-handlers work without modification.
 func (s *Server) handleWebDAV(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.Path, "/infuse") {
 		r.URL.Path = strings.Replace(r.URL.Path, "/infuse", s.root, 1)

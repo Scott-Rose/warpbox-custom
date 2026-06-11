@@ -192,6 +192,29 @@
       </td>
     </tr>
   </table>
+  <table>
+    <tr><th colspan="2">Log Level</th></tr>
+    <tr class="actions">
+      <td colspan="2">
+        <form method="post" action="/actions/loglevel" style="display:inline">
+          <input type="hidden" name="level" value="debug" />
+          <input type="submit" value="🔍 Debug" class="btn" />
+        </form>
+        <form method="post" action="/actions/loglevel" style="display:inline">
+          <input type="hidden" name="level" value="info" />
+          <input type="submit" value="ℹ️ Info" class="btn" />
+        </form>
+        <form method="post" action="/actions/loglevel" style="display:inline">
+          <input type="hidden" name="level" value="warn" />
+          <input type="submit" value="⚠️ Warn" class="btn" />
+        </form>
+        <form method="post" action="/actions/loglevel" style="display:inline">
+          <input type="hidden" name="level" value="error" />
+          <input type="submit" value="❌ Error" class="btn" />
+        </form>
+      </td>
+    </tr>
+  </table>
 
   <div class="footer">
     <a href="https://REDACTED/ben/warpbox">ben/warpbox</a>
