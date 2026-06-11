@@ -188,33 +188,6 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 			continue // retry with the fresh URL
 		}
 
-		// 429 (rate limit) and 5xx (server error) from the CDN are transient.
-		// Instead of returning 502 (which rclone counts as an error toward
-		// maxErrorCount=10), route into hang/poll mode. The cached CDN URL is
-		// invalidated so the poll loop will re-fetch a fresh URL and give the
-		// CDN time to drain connections.
-		if proxyResp.StatusCode == http.StatusTooManyRequests ||
-			proxyResp.StatusCode >= 500 {
-			proxyResp.Body.Close()
-			slog.Warn("GET: CDN transient error, entering hang/poll mode",
-				"path", virtualPath,
-				"status", proxyResp.StatusCode,
-				"source", file.Source,
-				"item_id", file.ItemID,
-				"file_id", file.FileID,
-			)
-			// Invalidate the cached CDN URL so the hang loop fetches a fresh one.
-			if s.cfg.CDNTtlMinutes > 0 {
-				expiry := time.Now().Add(-1 * time.Hour)
-				if err := s.store.SetCDNURL(file.ID, "", expiry); err != nil {
-					slog.Error("GET: failed to invalidate CDN URL cache",
-						"path", file.Path, "error", err)
-				}
-			}
-			s.handleGetCDNHang(w, r, file)
-			return
-		}
-
 		// Check for non-success status that won't be repaired.
 		if proxyResp.StatusCode != http.StatusOK && proxyResp.StatusCode != http.StatusPartialContent {
 			proxyResp.Body.Close()
@@ -239,19 +212,14 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", srvRange.Start, srvRange.End, file.Size))
 		w.WriteHeader(http.StatusPartialContent)
 
-		// Acquire a CDN connection slot to prevent excessive concurrent
-		// connections from causing TorBox CDN 429s.
-		s.AcquireCDNConn()
-
-		// Pre-size the buffer to the known chunk length to avoid incremental
-		// heap reallocations (bytes.Buffer grows by doubling from nil).
-		cacheBuf := bytes.NewBuffer(make([]byte, 0, srvRange.Length))
-		tee := io.TeeReader(proxyResp.Body, cacheBuf)
+		// Use a bytes.Buffer to capture the response for caching, while
+		// simultaneously streaming to the client via TeeReader.
+		var cacheBuf bytes.Buffer
+		tee := io.TeeReader(proxyResp.Body, &cacheBuf)
 
 		// Stream from CDN → client (via TeeReader which also writes to cacheBuf).
 		written, copyErr := io.Copy(w, tee)
 		proxyResp.Body.Close()
-		s.ReleaseCDNConn()
 
 		if copyErr != nil {
 			slog.Error("GET: error streaming CDN data",
@@ -262,12 +230,9 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Cache the chunk in RAM — but only if it's above the minimum size
-		// threshold. Tiny chunks (e.g. Plex's 5.6KB end-of-file metadata reads)
-		// waste cache slots and cause churn for no benefit.
-		if srvRange.Length >= int64(s.MinChunkBytes()) {
-			s.cache.Put(int(file.ID), srvRange.Start, cacheBuf.Bytes())
-		}
+		// Cache the chunk in RAM. The bytes.Buffer contains the complete
+		// response data captured during the stream.
+		s.cache.Put(int(file.ID), srvRange.Start, cacheBuf.Bytes())
 		return
 	}
 
@@ -573,10 +538,6 @@ func (s *Server) handleGetCDNHang(w http.ResponseWriter, r *http.Request, file *
 	}
 
 	// Proxy the data from CDN, streaming directly to the client.
-	// Acquire a CDN connection slot to respect the max concurrent connections limit.
-	s.AcquireCDNConn()
-	defer s.ReleaseCDNConn()
-
 	proxyClient := &http.Client{Timeout: 30 * time.Second}
 	proxyReq, err := http.NewRequestWithContext(r.Context(), http.MethodGet, cdnURL, http.NoBody)
 	if err != nil {
