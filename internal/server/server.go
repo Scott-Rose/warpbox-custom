@@ -1,7 +1,7 @@
 // Package server implements the WebDAV HTTP handler for Warpbox.
 //
 // It handles PROPFIND (directory listing), GET with Range (streaming),
-// HEAD, and OPTIONS methods. All reads go through the throttle → cache →
+// HEAD, and OPTIONS methods. All reads go through the throttle →
 // metadata pipeline.
 package server
 
@@ -12,12 +12,10 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime"
-	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/ben/warpbox/internal/cache"
 	"github.com/ben/warpbox/internal/metadata"
 	"github.com/ben/warpbox/internal/throttle"
 	"github.com/ben/warpbox/internal/torbox"
@@ -45,7 +43,6 @@ type torrentFailureTracker struct {
 type Server struct {
 	cfg        Config
 	store      *metadata.Store
-	cache      *cache.Buffer
 	torBox     *torbox.Client
 	queue      *throttle.Queue
 	root       string
@@ -71,9 +68,6 @@ type Server struct {
 	negativeCacheMaxEntries  int
 	circuitBreakerMaxEntries int
 
-	// Min chunk bytes to cache (tiny chunks skip cache).
-	minChunkBytes int
-
 	// Path to config file for runtime log level toggle.
 	configPath string
 
@@ -90,10 +84,6 @@ type Config struct {
 	CDNURLAutoRepair    bool // Auto-repair stale CDN URLs
 	CDNURLRepairRetries int  // Max repair retries per request
 	Version            string // Build version
-	MaxRAMMB           int    // For landing page display
-	ChunkSizeMB        int    // For landing page display
-	TTLSeconds         int    // For landing page display
-	EvictionStrategy   string // For landing page display
 	RequestsPerMinute  int    // For landing page display
 	LogFormat          string // For landing page display
 	LogLevel           string // For landing page display
@@ -117,7 +107,6 @@ type Config struct {
 	CleanupIntervalSeconds   int // How often to sweep expired entries; default 60
 
 	// CDN proxy settings.
-	MinChunkBytes     int // Skip caching chunks smaller than this; default 16384
 	MaxCDNConnections int // Max concurrent CDN proxy connections; default 4
 
 	// Path to config file for runtime log level toggle.
@@ -135,7 +124,7 @@ type Config struct {
 }
 
 // New creates a new WebDAV server.
-func New(cfg Config, store *metadata.Store, c *cache.Buffer, torBox *torbox.Client, queue *throttle.Queue) *Server {
+func New(cfg Config, store *metadata.Store, torBox *torbox.Client, queue *throttle.Queue) *Server {
 	maxConns := cfg.MaxCDNConnections
 	if maxConns < 1 {
 		maxConns = 4
@@ -144,7 +133,6 @@ func New(cfg Config, store *metadata.Store, c *cache.Buffer, torBox *torbox.Clie
 	s := &Server{
 		cfg:       cfg,
 		store:     store,
-		cache:     c,
 		torBox:    torBox,
 		queue:     queue,
 		root:      cfg.WebDAVRoot,
@@ -157,7 +145,6 @@ func New(cfg Config, store *metadata.Store, c *cache.Buffer, torBox *torbox.Clie
 		cdnSem:                 make(chan struct{}, maxConns),
 		negativeCacheMaxEntries:  cfg.NegativeCacheMaxEntries,
 		circuitBreakerMaxEntries: cfg.CircuitBreakerMaxEntries,
-		minChunkBytes:          cfg.MinChunkBytes,
 		configPath:             cfg.ConfigPath,
 		statsRetention:          time.Duration(cfg.StatsRetentionHours) * time.Hour,
 		statsChartSince:         time.Duration(cfg.StatsChartMinutes) * time.Minute,
@@ -179,11 +166,6 @@ func (s *Server) AcquireCDNConn() {
 // ReleaseCDNConn returns a CDN connection slot.
 func (s *Server) ReleaseCDNConn() {
 	s.cdnSem <- struct{}{}
-}
-
-// MinChunkBytes returns the minimum chunk size (in bytes) for caching.
-func (s *Server) MinChunkBytes() int {
-	return s.minChunkBytes
 }
 
 // ConfigPath returns the path to the config file for runtime log level toggle.
@@ -215,11 +197,6 @@ func (s *Server) startCleanupLoop() {
 						slog.Debug("pruned old stats", "rows", n)
 					}
 				}
-				// Force Go to release unused memory arenas back to the OS.
-				// Without this, Go's runtime holds onto pages from past peak
-				// allocations (the high-water mark), causing sys_mem to stay
-				// at 1.6GB+ even when the live heap is only 1MB.
-				debug.FreeOSMemory()
 			case <-s.cleanupStopCh:
 				return
 			}
@@ -234,8 +211,6 @@ func (s *Server) recordStats() {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 
-	cacheEntries, cacheUsedRAM, _ := s.CacheStats()
-
 	metrics := map[string]float64{
 		"api_calls_success":       float64(throttleStats.SuccessfulCalls),
 		"api_calls_failed":        float64(throttleStats.FailedCalls),
@@ -243,8 +218,6 @@ func (s *Server) recordStats() {
 		"sys_mb":                  float64(mem.Sys / 1024 / 1024),
 		"alloc_mb":                float64(mem.Alloc / 1024 / 1024),
 		"total_alloc_mb":          float64(mem.TotalAlloc / 1024 / 1024),
-		"cache_entries":           float64(cacheEntries),
-		"cache_used_mb":           float64(cacheUsedRAM / (1024 * 1024)),
 		"negative_cache_entries":  float64(s.NegativeCacheSize()),
 		"circuit_breaker_entries": float64(s.CircuitBreakerSize()),
 	}
@@ -342,11 +315,6 @@ func (s *Server) sweepCircuitBreaker() {
 			"max", s.circuitBreakerMaxEntries,
 		)
 	}
-}
-
-// CacheStats returns the buffer's current stats.
-func (s *Server) CacheStats() (entries, usedRAM, maxRAM int) {
-	return s.cache.Stats()
 }
 
 // NegativeCacheSize returns the current number of entries in the negative cache.

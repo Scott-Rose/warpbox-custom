@@ -1,5 +1,5 @@
 // Actions — POST endpoints for runtime operations accessible from the
-// landing page as buttons (e.g., resync metadata, clear RAM cache, toggle log level).
+// landing page as buttons (e.g., resync metadata, toggle log level).
 package server
 
 import (
@@ -13,13 +13,11 @@ import (
 type ActionFunc func() error
 
 // Server actions config, wired from main.go.
-var actionResync  ActionFunc
-var actionClearCache ActionFunc
+var actionResync ActionFunc
 
 // SetActions configures the action callbacks used by the /actions/ handlers.
-func SetActions(resync, clearCache ActionFunc) {
+func SetActions(resync ActionFunc) {
 	actionResync = resync
-	actionClearCache = clearCache
 }
 
 // handleActions dispatches POST requests to the appropriate action handler.
@@ -32,8 +30,6 @@ func (s *Server) handleActions(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/actions/resync":
 		s.handleResync(w, r)
-	case "/actions/clearcache":
-		s.handleClearCache(w, r)
 	case "/actions/loglevel":
 		s.handleLogLevel(w, r)
 	default:
@@ -58,25 +54,6 @@ func (s *Server) handleResync(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Resync triggered\n"))
-}
-
-// handleClearCache evicts all cached chunks from the RAM buffer.
-func (s *Server) handleClearCache(w http.ResponseWriter, r *http.Request) {
-	if actionClearCache == nil {
-		http.Error(w, "Clear cache not configured", http.StatusInternalServerError)
-		return
-	}
-
-	slog.Info("action: clear cache triggered from landing page")
-	if err := actionClearCache(); err != nil {
-		slog.Error("action: clear cache failed", "error", err)
-		http.Error(w, "Clear cache failed", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Cache cleared\n"))
 }
 
 // handleLogLevel changes the runtime log level and persists it to config.yml.

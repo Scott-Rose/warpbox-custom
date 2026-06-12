@@ -22,37 +22,32 @@ type ServerConfig struct {
 	WebDAVRoot string `yaml:"webdav_root"` // Default: "/webdav"
 }
 
-// CacheConfig holds JIT RAM buffering parameters.
+// CacheConfig holds caching and CDN proxy parameters.
 type CacheConfig struct {
-	ChunkSizeMB        int    `yaml:"chunk_size_mb"`         // Default: 16
-	MaxRAMMB           int    `yaml:"max_ram_mb"`            // Default: 512
-	TTLSeconds         int    `yaml:"ttl_seconds"`           // Default: 30
-	EvictionStrategy   string `yaml:"eviction_strategy"`     // "ttl" or "lru"; default: "ttl"
-	CDNURLTTLMinutes   int    `yaml:"cdn_url_ttl_minutes"`   // How long to cache CDN URLs; default: 120
-	CDNURLAutoRepair   *bool  `yaml:"cdn_url_auto_repair"`   // Auto-repair stale CDN URLs; nil→default true
-	CDNURLRepairRetries *int  `yaml:"cdn_url_repair_retries"` // Max CDN proxy retries per request; nil→default 2
+	CDNURLTTLMinutes    int    `yaml:"cdn_url_ttl_minutes"`    // How long to cache CDN URLs; default: 120
+	CDNURLAutoRepair    *bool  `yaml:"cdn_url_auto_repair"`    // Auto-repair stale CDN URLs; nil→default true
+	CDNURLRepairRetries *int   `yaml:"cdn_url_repair_retries"` // Max CDN proxy retries per request; nil→default 2
 
 	// CDN URL fetch retry settings (for TorBox API errors, not CDN proxy errors).
-	CDNURLRetryBackoff *int `yaml:"cdn_url_retry_backoff"`   // Backoff base in seconds; nil→default 1
-	CDNURLRetryCount   *int `yaml:"cdn_url_retry_attempts"`  // Max retry attempts; nil→default 1
+	CDNURLRetryBackoff *int `yaml:"cdn_url_retry_backoff"`  // Backoff base in seconds; nil→default 1
+	CDNURLRetryCount   *int `yaml:"cdn_url_retry_attempts"` // Max retry attempts; nil→default 1
 
 	// Negative cache: prevents Plex retry loop from hitting TorBox for recently-failed files.
 	NegativeCacheTTLSeconds *int `yaml:"negative_cache_ttl_seconds"` // How long to cache failed results; nil→default 30
 
 	// Circuit breaker: per-torrent failure tracking.
-	CircuitBreakerFailures  *int `yaml:"circuit_breaker_failures"`   // Max failures in window; nil→default 5
-	CircuitBreakerWindowSec *int `yaml:"circuit_breaker_window_seconds"` // Sliding window; nil→default 60
-	CircuitBreakerStaleMin  *int `yaml:"circuit_breaker_stale_minutes"` // Stale duration; nil→default 5
+	CircuitBreakerFailures   *int `yaml:"circuit_breaker_failures"`    // Max failures in window; nil→default 5
+	CircuitBreakerWindowSec  *int `yaml:"circuit_breaker_window_seconds"` // Sliding window; nil→default 60
+	CircuitBreakerStaleMin   *int `yaml:"circuit_breaker_stale_minutes"` // Stale duration; nil→default 5
 
 	// Memory management settings.
-	NegativeCacheMaxEntries  *int `yaml:"negative_cache_max_entries"` // Max entries in negative cache; nil→default 5000
-	CircuitBreakerMaxEntries *int `yaml:"circuit_breaker_max_entries"` // Max entries in circuit breaker; nil→default 2000
-	CleanupIntervalSeconds   *int `yaml:"cleanup_interval_seconds"`  // Sweep interval; nil→default 60
-	MemoryStatsIntervalMin   *int `yaml:"memory_stats_interval_minutes"` // Memory logging interval; nil→default 5
+	NegativeCacheMaxEntries   *int `yaml:"negative_cache_max_entries"`   // Max entries in negative cache; nil→default 5000
+	CircuitBreakerMaxEntries  *int `yaml:"circuit_breaker_max_entries"`  // Max entries in circuit breaker; nil→default 2000
+	CleanupIntervalSeconds    *int `yaml:"cleanup_interval_seconds"`     // Sweep interval; nil→default 60
+	MemoryStatsIntervalMin    *int `yaml:"memory_stats_interval_minutes"` // Memory logging interval; nil→default 5
 
 	// CDN proxy settings.
-	MinChunkBytes       *int `yaml:"min_chunk_bytes"`        // Skip caching chunks smaller than this; nil→default 16384
-	MaxCDNConnections   *int `yaml:"max_cdn_connections"`    // Max concurrent CDN proxy connections; nil→default 8
+	MaxCDNConnections *int `yaml:"max_cdn_connections"` // Max concurrent CDN proxy connections; nil→default 8
 }
 
 // ThrottleConfig holds rate-limiting settings.
@@ -97,18 +92,6 @@ func setDefaults(c *Config) {
 	}
 	if c.Server.WebDAVRoot == "" {
 		c.Server.WebDAVRoot = "/webdav"
-	}
-	if c.Cache.ChunkSizeMB == 0 {
-		c.Cache.ChunkSizeMB = 16
-	}
-	if c.Cache.MaxRAMMB == 0 {
-		c.Cache.MaxRAMMB = 512
-	}
-	if c.Cache.TTLSeconds == 0 {
-		c.Cache.TTLSeconds = 30
-	}
-	if c.Cache.EvictionStrategy == "" {
-		c.Cache.EvictionStrategy = "ttl"
 	}
 	if c.Cache.CDNURLTTLMinutes == 0 {
 		c.Cache.CDNURLTTLMinutes = 120
@@ -193,10 +176,6 @@ func setDefaults(c *Config) {
 		n := 5
 		c.Cache.MemoryStatsIntervalMin = &n
 	}
-	if c.Cache.MinChunkBytes == nil {
-		n := 16384
-		c.Cache.MinChunkBytes = &n
-	}
 	if c.Cache.MaxCDNConnections == nil {
 		n := 8
 		c.Cache.MaxCDNConnections = &n
@@ -207,9 +186,6 @@ func setDefaults(c *Config) {
 func validate(c *Config) error {
 	if c.TorBox.APIKey == "" {
 		return fmt.Errorf("torbox.api_key is required")
-	}
-	if c.Cache.EvictionStrategy != "ttl" && c.Cache.EvictionStrategy != "lru" {
-		return fmt.Errorf("cache.eviction_strategy must be \"ttl\" or \"lru\", got %q", c.Cache.EvictionStrategy)
 	}
 	if _, err := ParseLevel(c.Logging.Level); err != nil {
 		return fmt.Errorf("logging.level: %w", err)
@@ -278,12 +254,6 @@ func validate(c *Config) error {
 		r := *c.Cache.MemoryStatsIntervalMin
 		if r < 1 || r > 60 {
 			return fmt.Errorf("cache.memory_stats_interval_minutes must be 1–60, got %d", r)
-		}
-	}
-	if c.Cache.MinChunkBytes != nil {
-		r := *c.Cache.MinChunkBytes
-		if r < 0 || r > 1024*1024 {
-			return fmt.Errorf("cache.min_chunk_bytes must be 0–1048576, got %d", r)
 		}
 	}
 	if c.Cache.MaxCDNConnections != nil {

@@ -28,18 +28,6 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Server.ListenAddr != ":1412" {
 		t.Errorf("listen_addr = %q, want %q", cfg.Server.ListenAddr, ":1412")
 	}
-	if cfg.Cache.ChunkSizeMB != 16 {
-		t.Errorf("chunk_size_mb = %d, want %d", cfg.Cache.ChunkSizeMB, 16)
-	}
-	if cfg.Cache.MaxRAMMB != 512 {
-		t.Errorf("max_ram_mb = %d, want %d", cfg.Cache.MaxRAMMB, 512)
-	}
-	if cfg.Cache.TTLSeconds != 30 {
-		t.Errorf("ttl_seconds = %d, want %d", cfg.Cache.TTLSeconds, 30)
-	}
-	if cfg.Cache.EvictionStrategy != "ttl" {
-		t.Errorf("eviction_strategy = %q, want %q", cfg.Cache.EvictionStrategy, "ttl")
-	}
 	if cfg.Cache.CDNURLTTLMinutes != 120 {
 		t.Errorf("cdn_url_ttl_minutes = %d, want %d", cfg.Cache.CDNURLTTLMinutes, 120)
 	}
@@ -68,10 +56,6 @@ server:
   webdav_root: "/files"
 
 cache:
-  chunk_size_mb: 32
-  max_ram_mb: 1024
-  ttl_seconds: 60
-  eviction_strategy: "lru"
   cdn_url_ttl_minutes: 240
 
 throttle:
@@ -101,18 +85,6 @@ sync:
 	}
 	if cfg.Server.WebDAVRoot != "/files" {
 		t.Errorf("webdav_root = %q", cfg.Server.WebDAVRoot)
-	}
-	if cfg.Cache.ChunkSizeMB != 32 {
-		t.Errorf("chunk_size_mb = %d", cfg.Cache.ChunkSizeMB)
-	}
-	if cfg.Cache.MaxRAMMB != 1024 {
-		t.Errorf("max_ram_mb = %d", cfg.Cache.MaxRAMMB)
-	}
-	if cfg.Cache.TTLSeconds != 60 {
-		t.Errorf("ttl_seconds = %d", cfg.Cache.TTLSeconds)
-	}
-	if cfg.Cache.EvictionStrategy != "lru" {
-		t.Errorf("eviction_strategy = %q", cfg.Cache.EvictionStrategy)
 	}
 	if cfg.Cache.CDNURLTTLMinutes != 240 {
 		t.Errorf("cdn_url_ttl_minutes = %d", cfg.Cache.CDNURLTTLMinutes)
@@ -207,19 +179,6 @@ func TestLoadInvalidLevel(t *testing.T) {
 	_, err := Load(tmp)
 	if err == nil {
 		t.Fatal("expected error for invalid logging level, got nil")
-	}
-}
-
-func TestLoadInvalidEvictionStrategy(t *testing.T) {
-	content := []byte("torbox:\n  api_key: \"key\"\ncache:\n  eviction_strategy: \"fifo\"\n")
-	tmp := t.TempDir() + "/config.yml"
-	if err := os.WriteFile(tmp, content, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err := Load(tmp)
-	if err == nil {
-		t.Fatal("expected error for invalid eviction_strategy, got nil")
 	}
 }
 

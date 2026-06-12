@@ -202,12 +202,6 @@
 
   <table>
     <tr><th colspan="2">Cache</th></tr>
-    <tr><td>Max RAM</td><td>{{.MaxRAMMB}} MB</td></tr>
-    <tr><td>Currently used</td><td>{{.CacheUsedMB}} MB</td></tr>
-    <tr><td>Chunks cached</td><td>{{.CacheEntries}}</td></tr>
-    <tr><td>Chunk size</td><td>{{.ChunkSizeMB}} MB</td></tr>
-    <tr><td>TTL</td><td>{{.TTLSeconds}} s</td></tr>
-    <tr><td>Eviction strategy</td><td>{{.EvictionStrategy}}</td></tr>
     <tr><td>CDN URL TTL</td><td>{{.CDNURLTTLMinutes}} min</td></tr>
     <tr><td>Negative cache</td><td>{{.NegativeCacheSize}} entries</td></tr>
     <tr><td>Circuit breaker</td><td>{{.CircuitBreakerSize}} entries</td></tr>
@@ -241,9 +235,6 @@
       <td colspan="2">
         <form method="post" action="/actions/resync" style="display:inline">
           <input type="submit" value="Resync metadata" class="btn" />
-        </form>
-        <form method="post" action="/actions/clearcache" style="display:inline">
-          <input type="submit" value="Clear RAM cache" class="btn" />
         </form>
       </td>
     </tr>
@@ -301,8 +292,6 @@
     'total alloc': '#a78bfa',
     'sys mem': '#38bdf8',
     'alloc': '#2dd4bf',
-    'cache entries': '#f472b6',
-    'cache used': '#fb923c',
     'neg cache': '#c084fc',
     'breaker': '#e879f9',
   };
@@ -315,8 +304,6 @@
     { label: 'total alloc', key: 'total_alloc_mb',          unit: 'MB', color: COLORS['total alloc'] },
     { label: 'sys mem',     key: 'sys_mb',                 unit: 'MB', color: COLORS['sys mem'] },
     { label: 'alloc',       key: 'alloc_mb',                unit: 'MB', color: COLORS.alloc },
-    { label: 'cache entries', key: 'cache_entries',         unit: '',   color: COLORS['cache entries'] },
-    { label: 'cache used',  key: 'cache_used_mb',          unit: 'MB', color: COLORS['cache used'] },
     { label: 'neg cache',   key: 'negative_cache_entries', unit: '',   color: COLORS['neg cache'] },
     { label: 'breaker',     key: 'circuit_breaker_entries',unit: '',   color: COLORS.breaker },
   ];

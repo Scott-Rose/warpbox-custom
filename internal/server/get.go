@@ -1,4 +1,4 @@
-// WebDAV GET handler — serves file content via throttle → cache → CDN pipeline.
+// WebDAV GET handler — serves file content via throttle → CDN pipeline.
 //
 // Handles byte-range requests for partial content delivery (used by rclone
 // for metadata scanning and media server streaming). CDN URLs are cached in
@@ -6,7 +6,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/xml"
 	"fmt"
@@ -82,8 +81,8 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 // streamFileContent serves file bytes through the CDN proxy pipeline.
 // Used by both handleGet (WebDAV) and handleHTTP (direct streaming).
 // It handles CDN URL resolution (with retry, hang/poll, negative cache,
-// circuit breaker), byte-range requests, RAM cache lookup/population,
-// and streaming the response to the client via a proxy from the CDN.
+// circuit breaker), byte-range requests, and streaming the response to the
+// client via a proxy from the CDN.
 func (s *Server) streamFileContent(w http.ResponseWriter, r *http.Request, file *metadata.FileRecord) {
 	// Get or refresh the CDN URL.
 	cdnURL, err := s.store.GetCDNURL(file.ID)
@@ -142,31 +141,11 @@ func (s *Server) streamFileContent(w http.ResponseWriter, r *http.Request, file 
 			Length: file.Size,
 		}
 	}
-	// Check the RAM cache first.
-	cachedData := s.cache.Get(int(file.ID), srvRange.Start)
-	if cachedData != nil {
-		slog.Debug("GET: cache hit", "id", file.ID, "offset", srvRange.Start)
-		mime := file.MimeType
-		if mime == "" {
-			mime = "application/octet-stream"
-		}
-		w.Header().Set("Content-Type", mime)
-		w.Header().Set("Content-Length", strconv.FormatInt(srvRange.Length, 10))
-		w.Header().Set("Accept-Ranges", "bytes")
-		if isRange {
-			w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", srvRange.Start, srvRange.End, file.Size))
-			w.WriteHeader(http.StatusPartialContent)
-		} else {
-			w.WriteHeader(http.StatusOK)
-		}
-		w.Write(cachedData)
-		return
-	}
 
-	// Cache miss — fetch the data through a proxied request to the CDN URL.
+	// Fetch the data through a proxied request to the CDN URL.
 	// If the CDN returns 403/404, the URL may be stale. Automatically re-fetch
 	// a fresh URL via the throttle queue and retry, up to cdn_url_repair_retries.
-	slog.Debug("GET: cache miss, proxying from CDN", "id", file.ID, "offset", srvRange.Start)
+	slog.Debug("GET: proxying from CDN", "id", file.ID, "offset", srvRange.Start)
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	maxAttempts := s.cfg.CDNURLRepairRetries + 1
@@ -260,10 +239,7 @@ func (s *Server) streamFileContent(w http.ResponseWriter, r *http.Request, file 
 			return
 		}
 
-		// Stream the CDN response to the client while simultaneously capturing
-		// the data for the RAM cache. Uses TeeReader to avoid loading the entire
-		// response body into memory before proxying — data flows to the client
-		// as it arrives from the CDN, reducing latency and peak memory.
+		// Stream the CDN response directly to the client.
 		mime := file.MimeType
 		if mime == "" {
 			mime = "application/octet-stream"
@@ -282,13 +258,8 @@ func (s *Server) streamFileContent(w http.ResponseWriter, r *http.Request, file 
 		// connections from causing TorBox CDN 429s.
 		s.AcquireCDNConn()
 
-		// Pre-size the buffer to the known chunk length to avoid incremental
-		// heap reallocations (bytes.Buffer grows by doubling from nil).
-		cacheBuf := bytes.NewBuffer(make([]byte, 0, srvRange.Length))
-		tee := io.TeeReader(proxyResp.Body, cacheBuf)
-
-		// Stream from CDN → client (via TeeReader which also writes to cacheBuf).
-		written, copyErr := io.Copy(w, tee)
+		// Stream from CDN → client.
+		written, copyErr := io.Copy(w, proxyResp.Body)
 		proxyResp.Body.Close()
 		s.ReleaseCDNConn()
 
@@ -299,13 +270,6 @@ func (s *Server) streamFileContent(w http.ResponseWriter, r *http.Request, file 
 				"error", copyErr,
 			)
 			return
-		}
-
-		// Cache the chunk in RAM — but only if it's above the minimum size
-		// threshold. Tiny chunks (e.g. Plex's 5.6KB end-of-file metadata reads)
-		// waste cache slots and cause churn for no benefit.
-		if srvRange.Length >= int64(s.MinChunkBytes()) {
-			s.cache.Put(int(file.ID), srvRange.Start, cacheBuf.Bytes())
 		}
 		return
 	}
@@ -631,17 +595,10 @@ func (s *Server) handleGetCDNHang(w http.ResponseWriter, r *http.Request, file *
 	}
 	defer proxyResp.Body.Close()
 
-	// Stream CDN data directly to the client while capturing for cache.
-	var cacheBuf bytes.Buffer
-	tee := io.TeeReader(proxyResp.Body, &cacheBuf)
-	written, copyErr := io.Copy(w, tee)
+	// Stream CDN data directly to the client.
+	written, copyErr := io.Copy(w, proxyResp.Body)
 	if copyErr != nil {
 		slog.Error("GET (hang): error streaming CDN data", "path", file.Path, "written", written, "error", copyErr)
-	}
-
-	// Cache the chunk in RAM for subsequent requests.
-	if copyErr == nil {
-		s.cache.Put(int(file.ID), srvRange.Start, cacheBuf.Bytes())
 	}
 
 	slog.Debug("GET (hang): finished streaming", "path", file.Path, "bytes", written)

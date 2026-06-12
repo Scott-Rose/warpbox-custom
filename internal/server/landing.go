@@ -50,10 +50,6 @@ type LandingData struct {
 	HeapObjects          uint64
 	ListenAddr           string
 	WebDAVRoot           string
-	MaxRAMMB             int
-	ChunkSizeMB          int
-	TTLSeconds           int
-	EvictionStrategy     string
 	CDNURLTTLMinutes     int
 	RequestsPerMinute    int
 	SyncIntervalMinutes  int
@@ -66,8 +62,6 @@ type LandingData struct {
 	LastSyncTime         string // human-readable time of last successful sync
 	LastSyncError        string // empty if last sync succeeded
 	APIBad               bool   // true if there's a sync error to highlight
-	CacheEntries         int    // Current number of chunks in the RAM buffer
-	CacheUsedMB          int    // Current RAM used by the buffer
 	NegativeCacheSize    int    // Current entries in the negative cache
 	CircuitBreakerSize   int    // Current entries in the circuit breaker
 }
@@ -113,7 +107,6 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	cacheEntries, cacheUsedRAM, _ := s.CacheStats()
 	negCacheSize := s.NegativeCacheSize()
 	cbSize := s.CircuitBreakerSize()
 
@@ -132,10 +125,6 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		HeapObjects:         mem.HeapObjects,
 		ListenAddr:          s.cfg.ListenAddr,
 		WebDAVRoot:          s.cfg.WebDAVRoot,
-		MaxRAMMB:            s.cfg.MaxRAMMB,
-		ChunkSizeMB:         s.cfg.ChunkSizeMB,
-		TTLSeconds:          s.cfg.TTLSeconds,
-		EvictionStrategy:    s.cfg.EvictionStrategy,
 		CDNURLTTLMinutes:    s.cfg.CDNTtlMinutes,
 		RequestsPerMinute:   s.cfg.RequestsPerMinute,
 		SyncIntervalMinutes: s.cfg.SyncIntervalMinute,
@@ -148,8 +137,6 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		LastSyncTime:        lastSyncTime,
 		LastSyncError:       lastSyncErr,
 		APIBad:              apiBad,
-		CacheEntries:        cacheEntries,
-		CacheUsedMB:         cacheUsedRAM / (1024 * 1024),
 		NegativeCacheSize:   negCacheSize,
 		CircuitBreakerSize:  cbSize,
 	}

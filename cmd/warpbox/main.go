@@ -17,7 +17,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ben/warpbox/internal/cache"
 	"github.com/ben/warpbox/internal/config"
 	"github.com/ben/warpbox/internal/metadata"
 	"github.com/ben/warpbox/internal/server"
@@ -110,18 +109,6 @@ func main() {
 	}
 	defer metadataStore.Close()
 
-	evictionStrategy := cache.StrategyTTL
-	if cfg.Cache.EvictionStrategy == "lru" {
-		evictionStrategy = cache.StrategyLRU
-	}
-	ramCache := cache.NewBuffer(
-		cfg.Cache.MaxRAMMB*1024*1024,
-		cfg.Cache.ChunkSizeMB*1024*1024,
-		time.Duration(cfg.Cache.TTLSeconds)*time.Second,
-		evictionStrategy,
-	)
-	defer ramCache.Stop()
-
 	throttleQueue := throttle.NewQueue(cfg.Throttle.RequestsPerMinute)
 
 	torBoxClient := torbox.NewClient(cfg.TorBox.APIKey)
@@ -146,10 +133,6 @@ func main() {
 			syncWorker.SyncNow()
 			return nil
 		},
-		func() error {
-			ramCache.Clear()
-			return nil
-		},
 	)
 
 	// Wire the LevelVar into the server config for runtime log level toggle.
@@ -160,10 +143,6 @@ func main() {
 		CDNURLAutoRepair:        *cfg.Cache.CDNURLAutoRepair,
 		CDNURLRepairRetries:     *cfg.Cache.CDNURLRepairRetries,
 		Version:                 Version,
-		MaxRAMMB:                cfg.Cache.MaxRAMMB,
-		ChunkSizeMB:             cfg.Cache.ChunkSizeMB,
-		TTLSeconds:              cfg.Cache.TTLSeconds,
-		EvictionStrategy:        cfg.Cache.EvictionStrategy,
 		RequestsPerMinute:       cfg.Throttle.RequestsPerMinute,
 		LogFormat:               cfg.Logging.Format,
 		LogLevel:                cfg.Logging.Level,
@@ -177,7 +156,6 @@ func main() {
 		NegativeCacheMaxEntries:  *cfg.Cache.NegativeCacheMaxEntries,
 		CircuitBreakerMaxEntries: *cfg.Cache.CircuitBreakerMaxEntries,
 		CleanupIntervalSeconds:  *cfg.Cache.CleanupIntervalSeconds,
-		MinChunkBytes:           *cfg.Cache.MinChunkBytes,
 		MaxCDNConnections:       *cfg.Cache.MaxCDNConnections,
 		ConfigPath:              *configPath,
 		StatsIntervalSeconds:    cfg.Stats.IntervalSeconds,
@@ -189,7 +167,6 @@ func main() {
 	srv := server.New(
 		serverCfg,
 		metadataStore,
-		ramCache,
 		torBoxClient,
 		throttleQueue,
 	)
@@ -211,16 +188,12 @@ func main() {
 			case <-memTicker.C:
 				var mem runtime.MemStats
 				runtime.ReadMemStats(&mem)
-				cacheEntries, cacheUsed, cacheMax := srv.CacheStats()
 				slog.Info("memory stats",
 					"alloc_mb", mem.Alloc/(1024*1024),
 					"total_alloc_mb", mem.TotalAlloc/(1024*1024),
 					"sys_mb", mem.Sys/(1024*1024),
 					"gc_cycles", mem.NumGC,
 					"heap_objects", mem.HeapObjects,
-					"cache_entries", cacheEntries,
-					"cache_used_mb", cacheUsed/(1024*1024),
-					"cache_max_mb", cacheMax/(1024*1024),
 					"negative_cache", srv.NegativeCacheSize(),
 					"circuit_breaker", srv.CircuitBreakerSize(),
 				)
