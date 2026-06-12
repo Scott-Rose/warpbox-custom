@@ -17,6 +17,29 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// User info types
+// ---------------------------------------------------------------------------
+
+// UserInfo represents the TorBox account details from GET /api/user/me.
+type UserInfo struct {
+	ID              int64   `json:"id"`
+	AuthID          string  `json:"auth_id"`
+	Email           string  `json:"email"`
+	Plan            int     `json:"plan"`
+	PlanName        string  `json:"plan_name"`
+	Premium         bool    `json:"premium"`
+	PremiumExpires  *string `json:"premium_expires,omitempty"`
+	CreatedAt       string  `json:"created_at"`
+	UpdatedAt       string  `json:"updated_at"`
+	ReferralCode    string  `json:"referral_code"`
+	Registered     bool    `json:"registered"`
+	PremiumDownloadLimit int64 `json:"premium_download_limit"`
+	TotalDownloaded int64  `json:"total_downloaded"`
+	TotalEgressed   int64  `json:"total_egressed"`
+	OverallRatio    float64 `json:"overall_ratio"`
+}
+
+// ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
 
@@ -231,6 +254,40 @@ func (c *Client) GetUsenetDownloadURL(ctx context.Context, usenetID, fileID int6
 
 	slog.Debug("torbox get_usenet_download_url result", "has_url", env.Data != "")
 	return env.Data, nil
+}
+
+// ---------------------------------------------------------------------------
+// GetUserInfo
+// ---------------------------------------------------------------------------
+
+// GetUserInfo returns the authenticated user's account details from TorBox.
+func (c *Client) GetUserInfo(ctx context.Context) (*UserInfo, error) {
+	u, _ := url.Parse(c.baseURL + "/v1/api/user/me")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("torbox: creating user/me request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+	slog.Debug("torbox user/me")
+
+	body, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	var env apiResponse[UserInfo]
+	if err := json.Unmarshal(body, &env); err != nil {
+		return nil, fmt.Errorf("torbox: decoding user/me response: %w", err)
+	}
+
+	if env.Error != nil && *env.Error != "" {
+		return nil, fmt.Errorf("torbox user/me API error: %s", *env.Error)
+	}
+
+	slog.Debug("torbox user/me result", "plan", env.Data.PlanName, "email", env.Data.Email)
+	return &env.Data, nil
 }
 
 // ---------------------------------------------------------------------------

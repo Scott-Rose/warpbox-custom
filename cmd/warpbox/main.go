@@ -203,6 +203,17 @@ func main() {
 		}
 	}()
 
+	// Fetch TorBox user info at startup.
+	go func() {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		if ui, err := torBoxClient.GetUserInfo(ctx); err != nil {
+			slog.Warn("failed to fetch TorBox user info", "error", err)
+		} else {
+			srv.SetTorBoxUserInfo(ui)
+		}
+	}()
+
 	slog.Info("warpbox ready", "version", Version)
 
 	select {

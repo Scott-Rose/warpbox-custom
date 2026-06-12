@@ -74,6 +74,10 @@ type Server struct {
 	// Stats recording config.
 	statsRetention  time.Duration // How long to retain stats rows
 	statsChartSince time.Duration // How far back the landing page chart shows
+
+	// TorBox user info (refreshed periodically).
+	torboxUserInfo   *torbox.UserInfo
+	torboxUserInfoMu sync.Mutex
 }
 
 // Config holds the server-specific configuration.
@@ -225,6 +229,20 @@ func (s *Server) recordStats() {
 	if err := s.store.RecordStats(metrics); err != nil {
 		slog.Debug("stats record failed", "error", err)
 	}
+}
+
+// SetTorBoxUserInfo atomically stores the user info for the landing page.
+func (s *Server) SetTorBoxUserInfo(info *torbox.UserInfo) {
+	s.torboxUserInfoMu.Lock()
+	defer s.torboxUserInfoMu.Unlock()
+	s.torboxUserInfo = info
+}
+
+// TorBoxUserInfo returns the cached TorBox account info (may be nil).
+func (s *Server) TorBoxUserInfo() *torbox.UserInfo {
+	s.torboxUserInfoMu.Lock()
+	defer s.torboxUserInfoMu.Unlock()
+	return s.torboxUserInfo
 }
 
 // StopCleanup stops the periodic cleanup goroutine. Intended for tests.

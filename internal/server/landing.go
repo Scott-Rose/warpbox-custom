@@ -64,6 +64,44 @@ type LandingData struct {
 	APIBad               bool   // true if there's a sync error to highlight
 	NegativeCacheSize    int    // Current entries in the negative cache
 	CircuitBreakerSize   int    // Current entries in the circuit breaker
+
+	// Cache config fields
+	CDNURLAutoRepair     string // "on" or "off"
+	CDNURLRepairRetries  int
+	CDNURLRetryBackoff   int    // in seconds
+	CDNURLRetryCount     int
+	NegativeCacheTTL     int    // in seconds
+	CircuitBreakerFails  int
+	CircuitBreakerWindow int    // in seconds
+	CircuitBreakerStale  int    // in minutes
+	NegCacheMaxEntries   int
+	CbMaxEntries         int
+	CleanupInterval      int    // in seconds
+	MemStatsInterval     int    // in minutes
+	MaxCDNConnections    int
+
+	// Sync config fields
+	SyncLimit int
+
+	// Stats config fields
+	StatsInterval    int // in seconds
+	StatsRetention   int // in hours
+	StatsChartWindow int // in minutes
+
+	// TorBox account fields
+	TBUserID           int64
+	TBEmail            string
+	TBPlan             int
+	TBPlanName         string
+	TBIsPremium        bool
+	TBPremiumExpires   string
+	TBCreatedAt        string
+	TBReferralCode     string
+	TBPremiumDLimit    int64
+	TBTotalDownloaded  int64
+	TBTotalEgressed    int64
+	TBOverallRatio     float64
+	TBHasAccount       bool // whether user info was successfully fetched
 }
 
 // handleLanding serves the Warpbox branded landing page with runtime stats.
@@ -110,6 +148,11 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 	negCacheSize := s.NegativeCacheSize()
 	cbSize := s.CircuitBreakerSize()
 
+	autoRepair := "off"
+	if s.cfg.CDNURLAutoRepair {
+		autoRepair = "on"
+	}
+
 	data := LandingData{
 		Version:             s.cfg.Version,
 		Uptime:              uptimeStr,
@@ -139,6 +182,52 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		APIBad:              apiBad,
 		NegativeCacheSize:   negCacheSize,
 		CircuitBreakerSize:  cbSize,
+
+		// Cache config
+		CDNURLAutoRepair:     autoRepair,
+		CDNURLRepairRetries:  s.cfg.CDNURLRepairRetries,
+		CDNURLRetryBackoff:   s.cfg.CDNURLRetryBackoff,
+		CDNURLRetryCount:     s.cfg.CDNURLRetryCount,
+		NegativeCacheTTL:     s.cfg.NegativeCacheTTLSeconds,
+		CircuitBreakerFails:  s.cfg.CircuitBreakerFailures,
+		CircuitBreakerWindow: s.cfg.CircuitBreakerWindowSec,
+		CircuitBreakerStale:  s.cfg.CircuitBreakerStaleMin,
+		NegCacheMaxEntries:   s.cfg.NegativeCacheMaxEntries,
+		CbMaxEntries:         s.cfg.CircuitBreakerMaxEntries,
+		CleanupInterval:      s.cfg.CleanupIntervalSeconds,
+		MemStatsInterval:     0, // not in server.Config; display "—"
+		MaxCDNConnections:    s.cfg.MaxCDNConnections,
+
+		// Sync config
+		SyncLimit: 0, // not in server.Config; display "—"
+
+		// Stats config
+		StatsInterval:    s.cfg.StatsIntervalSeconds,
+		StatsRetention:   s.cfg.StatsRetentionHours,
+		StatsChartWindow: s.cfg.StatsChartMinutes,
+
+		// TorBox account
+		TBHasAccount: false,
+	}
+
+	if ui := s.TorBoxUserInfo(); ui != nil {
+		premiumExpires := ""
+		if ui.PremiumExpires != nil {
+			premiumExpires = *ui.PremiumExpires
+		}
+		data.TBHasAccount = true
+		data.TBUserID = ui.ID
+		data.TBEmail = ui.Email
+		data.TBPlan = ui.Plan
+		data.TBPlanName = ui.PlanName
+		data.TBIsPremium = ui.Premium
+		data.TBPremiumExpires = premiumExpires
+		data.TBCreatedAt = ui.CreatedAt
+		data.TBReferralCode = ui.ReferralCode
+		data.TBPremiumDLimit = ui.PremiumDownloadLimit
+		data.TBTotalDownloaded = ui.TotalDownloaded
+		data.TBTotalEgressed = ui.TotalEgressed
+		data.TBOverallRatio = ui.OverallRatio
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
