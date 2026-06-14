@@ -80,6 +80,7 @@ type Server struct {
 	prevFailedCalls     int64
 	prev429Calls        int64
 	prevDBLockErrors    int64
+	prevNumGC           uint32
 
 	// TorBox user info (refreshed periodically).
 	torboxUserInfo   *torbox.UserInfo
@@ -215,9 +216,10 @@ func (s *Server) startCleanupLoop() {
 }
 
 // recordStats snapshots current metrics and writes them to the stats table.
-// Counter metrics (success/fail/429/db_lock_errors) are recorded as per-interval
-// deltas so charts show rate, not cumulative totals. Gauge metrics (sys_mb,
-// alloc_mb, gc_cycles, heap_objects, cache sizes) are point-in-time snapshots.
+// Counter metrics (success/fail/429/db_lock_errors/gc_cycles) are recorded
+// as per-interval deltas so charts show rate, not cumulative totals.
+// Gauge metrics (sys_mb, alloc_mb, heap_objects, cache sizes) show
+// point-in-time snapshots.
 func (s *Server) recordStats() {
 	throttleStats := s.queue.Stats()
 
@@ -230,12 +232,14 @@ func (s *Server) recordStats() {
 	d429 := throttleStats.HTTP429Calls - s.prev429Calls
 	lockErrors := s.store.DBLockErrors()
 	dLockErrors := lockErrors - s.prevDBLockErrors
+	dNumGC := mem.NumGC - s.prevNumGC
 
 	// Update prev values for next interval.
 	s.prevSuccessfulCalls = throttleStats.SuccessfulCalls
 	s.prevFailedCalls = throttleStats.FailedCalls
 	s.prev429Calls = throttleStats.HTTP429Calls
 	s.prevDBLockErrors = lockErrors
+	s.prevNumGC = mem.NumGC
 
 	metrics := map[string]float64{
 		// Per-interval deltas.
@@ -243,11 +247,11 @@ func (s *Server) recordStats() {
 		"api_calls_failed":  float64(dFailed),
 		"api_calls_429":     float64(d429),
 		"db_lock_errors":    float64(dLockErrors),
+		"gc_cycles":         float64(dNumGC),
 
 		// Gauges — point-in-time values, not deltas.
 		"sys_mb":                  float64(mem.Sys / 1024 / 1024),
 		"alloc_mb":                float64(mem.Alloc / 1024 / 1024),
-		"gc_cycles":               float64(mem.NumGC),
 		"heap_objects":            float64(mem.HeapObjects),
 		"negative_cache_entries":  float64(s.NegativeCacheSize()),
 		"circuit_breaker_entries": float64(s.CircuitBreakerSize()),
