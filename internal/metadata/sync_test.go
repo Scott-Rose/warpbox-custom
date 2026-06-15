@@ -1,8 +1,13 @@
 package metadata
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/ben/warpbox/internal/throttle"
 	"github.com/ben/warpbox/internal/torbox"
 )
 
@@ -104,5 +109,152 @@ func TestBuildFileRecordSanitizesPath(t *testing.T) {
 	}
 	if rec.Name != "show.mkv" {
 		t.Errorf("sanitized Name = %q, want %q", rec.Name, "show.mkv")
+	}
+}
+
+func TestSyncWorker_Stop_BeforeStart(t *testing.T) {
+	w := NewSyncWorker(nil, nil, nil, time.Minute, 0)
+	w.Stop()
+}
+
+func TestSyncWorker_Restart_BeforeStart(t *testing.T) {
+	w := NewSyncWorker(nil, nil, nil, time.Minute, 0)
+	w.Restart()
+}
+
+func newTestSyncEnv(t *testing.T) (*SyncWorker, *httptest.Server, *Store, func()) {
+	t.Helper()
+
+	store, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"data":[],"success":true}`))
+	}))
+
+	client := torbox.NewClient("test-api-key")
+	client.SetBaseURL(ts.URL)
+	client.SetHTTPClient(&http.Client{})
+
+	queue := throttle.NewQueue(99999)
+	qCtx, qCancel := context.WithCancel(context.Background())
+	queue.Start(qCtx)
+
+	sw := NewSyncWorker(store, client, queue, time.Hour, 100)
+
+	cleanup := func() {
+		qCancel()
+		ts.Close()
+		store.Close()
+	}
+
+	return sw, ts, store, cleanup
+}
+
+func TestSyncWorker_StartStop_Lifecycle(t *testing.T) {
+	w, _, _, cleanup := newTestSyncEnv(t)
+	defer cleanup()
+
+	swCtx, swCancel := context.WithCancel(context.Background())
+	defer swCancel()
+
+	done := make(chan struct{})
+	go func() {
+		w.Start(swCtx)
+		close(done)
+	}()
+
+	// Wait for the first sync cycle to complete.
+	deadline := time.Now().Add(10 * time.Second)
+	for w.Status().LastSuccess.IsZero() {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for initial sync")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// Stop the worker.
+	stopDone := make(chan struct{})
+	go func() {
+		w.Stop()
+		close(stopDone)
+	}()
+
+	select {
+	case <-stopDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop did not complete within 5s")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("worker goroutine did not exit after Stop")
+	}
+}
+
+func TestSyncWorker_Restart_Lifecycle(t *testing.T) {
+	w, _, _, cleanup := newTestSyncEnv(t)
+	defer cleanup()
+
+	swCtx, swCancel := context.WithCancel(context.Background())
+	defer swCancel()
+
+	done := make(chan struct{})
+	go func() {
+		w.Start(swCtx)
+		close(done)
+	}()
+
+	// Wait for the first sync cycle to complete.
+	deadline := time.Now().Add(10 * time.Second)
+	for w.Status().LastSuccess.IsZero() {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for initial sync")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	firstSync := w.Status().LastSuccess
+
+	// Restart the worker.
+	restartDone := make(chan struct{})
+	go func() {
+		w.Restart()
+		close(restartDone)
+	}()
+
+	select {
+	case <-restartDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Restart did not complete within 10s")
+	}
+
+	// Wait for the restarted loop to complete at least one sync cycle.
+	syncDeadline := time.Now().Add(10 * time.Second)
+	for {
+		if w.Status().LastSuccess.After(firstSync) {
+			break
+		}
+		if time.Now().After(syncDeadline) {
+			t.Fatal("timed out waiting for restarted sync")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// Stop the restarted worker.
+	stopDone := make(chan struct{})
+	go func() {
+		w.Stop()
+		close(stopDone)
+	}()
+
+	select {
+	case <-stopDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop after Restart did not complete within 5s")
 	}
 }

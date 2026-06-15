@@ -51,6 +51,14 @@ type Client struct {
 	HTTP429Callback func() // Called when a 429 response is received
 }
 
+// SetBaseURL overrides the API base URL. Used by tests to redirect traffic
+// to an httptest server. Exported but not intended for production use.
+func (c *Client) SetBaseURL(url string) { c.baseURL = url }
+
+// SetHTTPClient overrides the HTTP client. Used by tests to inject a
+// custom transport or timeout. Exported but not intended for production use.
+func (c *Client) SetHTTPClient(hc *http.Client) { c.httpClient = hc }
+
 // NewClient creates a new TorBox API client.
 // The base URL is hardcoded to https://api.torbox.app — it is not configurable
 // because the TorBox API endpoint is stable and not user-serviceable.
