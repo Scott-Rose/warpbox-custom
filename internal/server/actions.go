@@ -12,12 +12,15 @@ import (
 // ActionFunc is a callback that an action button triggers.
 type ActionFunc func() error
 
-// Server actions config, wired from main.go.
-var actionResync ActionFunc
+// actions holds all named action callbacks wired from main.go.
+// The map is populated once at startup before any HTTP requests arrive.
+var actions = make(map[string]ActionFunc)
 
-// SetActions configures the action callbacks used by the /actions/ handlers.
-func SetActions(resync ActionFunc) {
-	actionResync = resync
+// SetActions configures the named action callbacks used by the /actions/ handlers.
+func SetActions(funcs map[string]ActionFunc) {
+	for name, fn := range funcs {
+		actions[name] = fn
+	}
 }
 
 // handleActions dispatches POST requests to the appropriate action handler.
@@ -30,6 +33,8 @@ func (s *Server) handleActions(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/actions/resync":
 		s.handleResync(w, r)
+	case "/actions/restart-sync":
+		s.handleRestartSync(w, r)
 	case "/actions/loglevel":
 		s.handleLogLevel(w, r)
 	default:
@@ -39,14 +44,15 @@ func (s *Server) handleActions(w http.ResponseWriter, r *http.Request) {
 
 // handleResync triggers an immediate metadata sync from TorBox.
 func (s *Server) handleResync(w http.ResponseWriter, r *http.Request) {
-	if actionResync == nil {
+	fn, ok := actions["resync"]
+	if !ok {
 		http.Error(w, "Resync not configured", http.StatusInternalServerError)
 		return
 	}
 
 	slog.Info("action: resync triggered from landing page")
 	go func() {
-		if err := actionResync(); err != nil {
+		if err := fn(); err != nil {
 			slog.Error("action: resync failed", "error", err)
 		}
 	}()
@@ -54,6 +60,26 @@ func (s *Server) handleResync(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Resync triggered\n"))
+}
+
+// handleRestartSync stops the sync worker loop and starts a fresh one.
+func (s *Server) handleRestartSync(w http.ResponseWriter, r *http.Request) {
+	fn, ok := actions["restart-sync"]
+	if !ok {
+		http.Error(w, "Restart sync not configured", http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("action: restart-sync triggered from landing page")
+	go func() {
+		if err := fn(); err != nil {
+			slog.Error("action: restart-sync failed", "error", err)
+		}
+	}()
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Sync worker restart triggered\n"))
 }
 
 // handleLogLevel changes the runtime log level and persists it to config.yml.

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -26,6 +27,11 @@ type SyncWorker struct {
 	limit       int
 	lastError   error
 	lastSuccess time.Time
+
+	mu        sync.Mutex
+	parentCtx context.Context
+	cancel    context.CancelFunc
+	loopDone  chan struct{}
 }
 
 // SyncStatus describes the state of the most recent metadata sync.
@@ -56,10 +62,25 @@ func NewSyncWorker(store *Store, client *torbox.Client, queue *throttle.Queue, i
 }
 
 // Start begins the periodic sync loop. Blocks until ctx is cancelled.
+// Stores ctx as the parent context so Restart can derive fresh contexts from it.
 func (w *SyncWorker) Start(ctx context.Context) {
+	w.mu.Lock()
+	w.parentCtx = ctx
+	runCtx, cancel := context.WithCancel(ctx)
+	w.cancel = cancel
+	loopDone := make(chan struct{})
+	w.loopDone = loopDone
+	w.mu.Unlock()
+
+	w.runLoop(runCtx)
+	close(loopDone)
+}
+
+// runLoop contains the core ticker loop extracted from Start so that Stop
+// and Restart can manage the lifecycle without duplicating logic.
+func (w *SyncWorker) runLoop(ctx context.Context) {
 	slog.Info("metadata sync worker started", "interval_minutes", w.interval.Minutes())
 
-	// Run an immediate sync on startup.
 	w.syncOnce(ctx)
 
 	ticker := time.NewTicker(w.interval)
@@ -74,6 +95,52 @@ func (w *SyncWorker) Start(ctx context.Context) {
 			return
 		}
 	}
+}
+
+// Stop cancels the current sync loop and waits for it to finish.
+// Safe to call multiple times or before Start.
+func (w *SyncWorker) Stop() {
+	w.mu.Lock()
+	if w.cancel != nil {
+		w.cancel()
+		w.cancel = nil
+	}
+	loopDone := w.loopDone
+	w.mu.Unlock()
+
+	if loopDone != nil {
+		select {
+		case <-loopDone:
+		case <-time.After(90 * time.Second):
+			slog.Warn("sync worker stop timed out")
+		}
+	}
+}
+
+// Restart stops the current sync loop and starts a fresh one.
+// The new loop derives its context from the parent context stored at startup,
+// so it still respects process-level shutdown (SIGINT/SIGTERM).
+func (w *SyncWorker) Restart() {
+	slog.Info("sync worker restart requested")
+	w.Stop()
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.parentCtx == nil {
+		slog.Warn("sync worker restart skipped: never started")
+		return
+	}
+
+	ctx, cancel := context.WithCancel(w.parentCtx)
+	w.cancel = cancel
+	loopDone := make(chan struct{})
+	w.loopDone = loopDone
+	go func() {
+		w.runLoop(ctx)
+		close(loopDone)
+	}()
+	slog.Info("sync worker restarted")
 }
 
 // SyncNow triggers an immediate out-of-cycle sync using a fresh background context.

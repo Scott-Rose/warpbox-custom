@@ -127,12 +127,16 @@ func main() {
 	)
 	go syncWorker.Start(ctx)
 
-	server.SetActions(
-		func() error {
+	server.SetActions(map[string]server.ActionFunc{
+		"resync": func() error {
 			syncWorker.SyncNow()
 			return nil
 		},
-	)
+		"restart-sync": func() error {
+			syncWorker.Restart()
+			return nil
+		},
+	})
 
 	// Wire the LevelVar into the server config for runtime log level toggle.
 	serverCfg := server.Config{
