@@ -20,7 +20,7 @@ type TorBoxConfig struct {
 
 // ServerConfig holds the WebDAV server settings.
 type ServerConfig struct {
-	ListenAddr  string `yaml:"listen_addr"`  // Default: ":8080"
+	ListenAddr  string `yaml:"listen_addr"`  // Default: ":1412"
 	EnablePprof bool  `yaml:"enable_pprof"` // Enable /debug/pprof/; default false
 }
 
