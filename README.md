@@ -8,8 +8,6 @@ I connected rclone to TorBox and immediately hit rate limits. Every library scan
 
 So I built this. I've been using it for weeks and it works well enough that I wanted to share it.
 
-This tool has been developed with heavy AI assistance. If that bothers you, fair enough. However every commit is reviewed by me, and CI-validated.
-
 ## Quick Start
 
 ### Docker Compose
@@ -224,4 +222,4 @@ You are responsible for ensuring your use of warpbox complies with TorBox's curr
 
 ## AI Disclosure
 
-This project was developed with heavy AI assistance. See [AI_DISCLOSURE.md](AI_DISCLOSURE.md).
+This project was developed with heavy AI assistance. If that bothers you, fair enough. However every commit is reviewed by me, and CI-validated. See [AI_DISCLOSURE.md](AI_DISCLOSURE.md).
