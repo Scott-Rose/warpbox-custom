@@ -274,6 +274,7 @@ func (s *Store) GetCDNURL(internalID int64) (string, error) {
 
 	expiryTime, err := time.Parse(time.RFC3339, expires)
 	if err != nil {
+		slog.Debug("unparseable CDN URL expiry", "expires", expires, "error", err)
 		return "", nil
 	}
 
@@ -345,7 +346,9 @@ func (s *Store) GetItemIDByFileID(source FileSource, fileID int64) (int64, error
 // and everything else can be pruned.
 func (s *Store) GetNextSyncTag() (int64, error) {
 	// Ensure the counter row exists.
-	_, _ = s.db.Exec(`INSERT OR IGNORE INTO meta (key, value) VALUES ('sync_tag', '0')`)
+	if _, err := s.db.Exec(`INSERT OR IGNORE INTO meta (key, value) VALUES ('sync_tag', '0')`); err != nil {
+		slog.Debug("sync tag seed exec failed", "error", err)
+	}
 
 	// Atomically increment and return the new value.
 	var tag int64

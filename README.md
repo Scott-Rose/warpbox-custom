@@ -115,7 +115,7 @@ A flag-by-flag explanation of each rclone setting is in [`docs/rclone-config.md`
 
 ### Build from Source
 
-Requires Go 1.26+:
+Requires Go 1.26.2+:
 
 ```bash
 # Clone the repository

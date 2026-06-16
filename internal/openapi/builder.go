@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -59,11 +60,15 @@ func (b *Builder) Handler() http.HandlerFunc {
 		if b.spec == nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "spec not built"})
+			if err := json.NewEncoder(w).Encode(map[string]string{"error": "spec not built"}); err != nil {
+				slog.Debug("openapi spec error response encode failed", "error", err)
+			}
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(b.spec)
+		if err := json.NewEncoder(w).Encode(b.spec); err != nil {
+			slog.Debug("openapi spec encode failed", "error", err)
+		}
 	}
 }
 

@@ -267,7 +267,9 @@ func (s *Server) handleChartJS(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/javascript")
 	w.WriteHeader(http.StatusOK)
-	w.Write(b)
+	if _, err := w.Write(b); err != nil {
+		slog.Debug("chart.js write failed", "error", err)
+	}
 }
 
 // handleLogo serves the embedded warpbox.svg at /warpbox.svg and also at
@@ -280,5 +282,7 @@ func (s *Server) handleLogo(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "image/svg+xml")
 	w.WriteHeader(http.StatusOK)
-	w.Write(svg)
+	if _, err := w.Write(svg); err != nil {
+		slog.Debug("logo write failed", "error", err)
+	}
 }

@@ -599,11 +599,13 @@ CREATE INDEX IF NOT EXISTS idx_stats_metric_time ON stats(metric, timestamp);
 
 ### Recording (`recordStats`)
 
-Runs in the cleanup loop goroutine (see `startCleanupLoop`), triggered by a ticker every `cleanup_interval_seconds` (default 60s, same interval used for cache sweeping). The cleanup loop lifecycle:
+Runs on an independent ticker in the cleanup goroutine (`startCleanupLoop`), driven by `stats.interval_seconds` (default 60s) — separate from the cache sweep interval. The cleanup loop lifecycle:
 
-1. `time.NewTicker(interval)` — fires every `CleanupIntervalSeconds` (default 60s)
-2. Each tick: `sweepNegativeCache()` → `sweepCircuitBreaker()` → `recordStats()` → `PruneStats(retention)`
-3. Stopped by closing `cleanupStopCh` (used by tests)
+1. `time.NewTicker(cleanupInterval)` — cache sweeps every `cleanup_interval_seconds` (default 60s)
+2. `time.NewTicker(statsInterval)` — stats recording every `stats.interval_seconds` (default 60s)
+3. Each cleanup tick: `sweepNegativeCache()` → `sweepCircuitBreaker()`
+4. Each stats tick: `recordStats()` → `PruneStats(retention)` (if configured)
+5. Stopped by closing `cleanupStopCh` (used by tests)
 
 **Delta computation.** Counter metrics (success, fail, 429, lock errors, GC cycles) are recorded as per-interval deltas, not cumulative totals. The previous value is subtracted from the current value to get the rate:
 
@@ -639,7 +641,7 @@ This means charts show call rate per interval, not monotonically increasing tota
 
 ### Pruning
 
-`PruneStats(retention time.Duration)`: `DELETE FROM stats WHERE timestamp < cutoff` where cutoff is `time.Now().UTC().Add(-retention)`. Runs every cleanup interval when `cfg.StatsRetentionHours > 0`. Returns number of rows deleted. Default retention: 24 hours.
+`PruneStats(retention time.Duration)`: `DELETE FROM stats WHERE timestamp < cutoff` where cutoff is `time.Now().UTC().Add(-retention)`. Runs every stats interval when `cfg.StatsRetentionHours > 0`. Returns number of rows deleted. Default retention: 24 hours.
 
 ### Stats Query Endpoints
 

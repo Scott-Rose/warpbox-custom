@@ -267,22 +267,30 @@ func (s *Server) ConfigPath() string {
 	return s.configPath
 }
 
-// startCleanupLoop runs a periodic background goroutine that sweeps expired
+// startCleanupLoop runs periodic background goroutines that sweep expired
 // entries from the negative cache and circuit breaker maps, and records
-// time-series stats.
+// time-series stats. Cleanup and stats run on independent tickers so they
+// can be configured at different intervals.
 func (s *Server) startCleanupLoop() {
-	interval := time.Duration(s.cfg.CleanupIntervalSeconds) * time.Second
-	if interval <= 0 {
-		interval = 60 * time.Second
+	cleanupInterval := time.Duration(s.cfg.CleanupIntervalSeconds) * time.Second
+	if cleanupInterval <= 0 {
+		cleanupInterval = 60 * time.Second
+	}
+	statsInterval := time.Duration(s.cfg.StatsIntervalSeconds) * time.Second
+	if statsInterval <= 0 {
+		statsInterval = 60 * time.Second
 	}
 	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
+		cleanupTick := time.NewTicker(cleanupInterval)
+		statsTick := time.NewTicker(statsInterval)
+		defer cleanupTick.Stop()
+		defer statsTick.Stop()
 		for {
 			select {
-			case <-ticker.C:
+			case <-cleanupTick.C:
 				s.sweepNegativeCache()
 				s.sweepCircuitBreaker()
+			case <-statsTick.C:
 				s.recordStats()
 				if s.statsRetention > 0 {
 					if n, err := s.store.PruneStats(s.statsRetention); err != nil {

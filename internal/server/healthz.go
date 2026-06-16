@@ -17,13 +17,17 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.Ping(ctx); err != nil {
 		slog.Warn("healthz: database ping failed", "error", err)
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{
+		if err := json.NewEncoder(w).Encode(map[string]string{
 			"status": "error",
 			"detail": "database unreachable",
-		})
+		}); err != nil {
+			slog.Debug("healthz error response encode failed", "error", err)
+		}
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+		slog.Debug("healthz ok response encode failed", "error", err)
+	}
 }

@@ -19,7 +19,7 @@ Plex/Jellyfin → rclone (FUSE mount) → WebDAV → Warpbox → TorBox API
 ## State & Caching Patterns
 
 - **Persistent State (Metadata):** SQLite in WAL (Write-Ahead Logging) mode for the virtual directory structure, file metadata, and cache pointers. Enables zero-API directory browsing.
-- **Ephemeral State (Data):** Just-In-Time (JIT) RAM buffering for video chunk look-aheads. File headers and media chunks are held in memory temporarily to serve rapid sequential byte-range requests, then evaporated based on a configurable TTL.
+- **Ephemeral State (Data):** CDN proxy passthrough. No intermediate memory buffering — all data streams directly through the CDN proxy from TorBox's origin servers to the client. The proxy handles concurrent connections via a semaphore-controlled pool (configurable via `max_cdn_connections`).
 
 ## Logging
 
