@@ -1,0 +1,216 @@
+name: Build and Test
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+
+env:
+  GOFLAGS: -mod=mod
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+      - name: Install C compiler
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential
+      - name: Lint (go vet)
+        run: go vet ./...
+        env:
+          CGO_ENABLED: 1
+      - name: Unit tests
+        run: go test ./... -count=1 -timeout 120s
+        env:
+          CGO_ENABLED: 1
+
+  build-smoke:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+      - name: Install C compiler
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential
+      - name: Compute version
+        run: |
+          echo "VERSION=$(git describe --tags --always 2>/dev/null || echo dev)" >> $GITHUB_ENV
+      - name: Smoke test (build)
+        run: |
+          echo "=== go vet ==="
+          CGO_ENABLED=1 go vet ./...
+          echo "=== go build ==="
+          CGO_ENABLED=1 go build -tags netgo -ldflags="-X main.Version=${VERSION}" -o /dev/null ./cmd/warpbox/
+          echo "SMOKE OK"
+
+  build-linux-amd64:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - name: Install C compiler
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential
+      - name: Compute version
+        run: |
+          echo "VERSION=$(git describe --tags --always 2>/dev/null || echo dev)" >> $GITHUB_ENV
+      - name: Build
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags netgo \
+            -ldflags="-s -w -extldflags=-static -X main.Version=${VERSION}" \
+            -o dist/warpbox-linux-amd64 ./cmd/warpbox/
+
+  build-linux-arm64:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - name: Install arm64 cross-compiler
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential gcc-aarch64-linux-gnu
+      - name: Compute version
+        run: |
+          echo "VERSION=$(git describe --tags --always 2>/dev/null || echo dev)" >> $GITHUB_ENV
+      - name: Build
+        run: |
+          mkdir -p dist
+          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -tags netgo \
+            -ldflags="-s -w -extldflags=-static -X main.Version=${VERSION}" \
+            -o dist/warpbox-linux-arm64 ./cmd/warpbox/
+
+  build-windows-amd64:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - name: Install mingw cross-compiler
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential gcc-mingw-w64-x86-64
+      - name: Compute version
+        run: |
+          echo "VERSION=$(git describe --tags --always 2>/dev/null || echo dev)" >> $GITHUB_ENV
+      - name: Build
+        run: |
+          mkdir -p dist
+          CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -tags netgo \
+            -ldflags="-s -w -extldflags=-static -X main.Version=${VERSION}" \
+            -o dist/warpbox-windows-amd64.exe ./cmd/warpbox/
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - name: Install cross compilers
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq build-essential gcc-aarch64-linux-gnu gcc-mingw-w64-x86-64 jq
+
+      - name: Extract tag name
+        id: tag
+        run: |
+          echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Rebuild Linux binaries
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=1 GOOS=linux   GOARCH=amd64 go build -tags netgo \
+            -ldflags="-s -w -extldflags=-static -X main.Version=${{ steps.tag.outputs.tag }}" \
+            -o dist/warpbox-linux-amd64 ./cmd/warpbox/
+          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -tags netgo \
+            -ldflags="-s -w -extldflags=-static -X main.Version=${{ steps.tag.outputs.tag }}" \
+            -o dist/warpbox-linux-arm64 ./cmd/warpbox/
+          CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -tags netgo \
+            -ldflags="-s -w -extldflags=-static -X main.Version=${{ steps.tag.outputs.tag }}" \
+            -o dist/warpbox-windows-amd64.exe ./cmd/warpbox/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          body_path: CHANGELOG.md
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract semver tag
+        id: tag2
+        run: |
+          echo "tag=${TAG_NAME#v}" >> $GITHUB_OUTPUT
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker images (linux/amd64)
+        run: |
+          TAG="${{ steps.tag2.outputs.tag }}"
+          REGISTRY="ghcr.io/${{ github.repository }}"
+          cp dist/warpbox-linux-amd64 warpbox.bin
+          docker buildx build \
+            --no-cache \
+            --platform linux/amd64 \
+            --file Dockerfile.prebuilt \
+            --output type=image,name="${REGISTRY}:${TAG}-amd64",push=true \
+            .
+          echo "Pushed ${REGISTRY}:${TAG}-amd64"
+
+      - name: Build and push Docker images (linux/arm64)
+        run: |
+          TAG="${{ steps.tag2.outputs.tag }}"
+          REGISTRY="ghcr.io/${{ github.repository }}"
+          cp dist/warpbox-linux-arm64 warpbox.bin
+          docker buildx build \
+            --no-cache \
+            --platform linux/arm64 \
+            --file Dockerfile.prebuilt \
+            --output type=image,name="${REGISTRY}:${TAG}-arm64",push=true \
+            .
+
+      - name: Push canonical semver tag
+        run: |
+          TAG="${{ steps.tag2.outputs.tag }}"
+          REGISTRY="ghcr.io/${{ github.repository }}"
+          docker pull "${REGISTRY}:${TAG}-amd64"
+          docker tag "${REGISTRY}:${TAG}-amd64" "${REGISTRY}:${TAG}"
+          docker push "${REGISTRY}:${TAG}"
+          rm -f warpbox.bin
+          echo "Docker images published:"
+          echo "  ${REGISTRY}:${TAG} (linux/amd64, canonical)"
+          echo "  ${REGISTRY}:${TAG}-amd64 (linux/amd64)"
+          echo "  ${REGISTRY}:${TAG}-arm64 (linux/arm64)"
