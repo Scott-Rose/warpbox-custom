@@ -68,8 +68,11 @@ func TestServeDirListingRoot(t *testing.T) {
 	if !strings.Contains(body, "<D:collection>") {
 		t.Error("expected collection element for directory")
 	}
-	if !strings.Contains(body, "Movie.A") || !strings.Contains(body, "Show.B") {
-		t.Error("expected Movie.A and Show.B in response")
+	if !strings.Contains(body, "__all__") {
+		t.Error("expected __all__ synthetic directory in root response")
+	}
+	if strings.Contains(body, "Movie.A") || strings.Contains(body, "Show.B") {
+		t.Error("root should NOT show real torrent dirs directly")
 	}
 }
 
@@ -180,7 +183,7 @@ func TestServeDirListingNestedPaths(t *testing.T) {
 
 	srv := New(Config{Version: "test"}, store, nil, nil)
 
-	// --- Test 1: Listing the root should show only the torrent directories ---
+	// --- Test 1: Listing the root should show only the __all__ synthetic directory ---
 	req := httptest.NewRequest(http.MethodGet, "/webdav/", nil)
 	w := httptest.NewRecorder()
 	srv.handleGet(w, req)
@@ -201,13 +204,18 @@ func TestServeDirListingNestedPaths(t *testing.T) {
 		t.Error("root listing should NOT contain child file paths with slash")
 	}
 
-	// Should only contain the torrent names as directory entries
-	if !strings.Contains(body, "<D:href>/webdav/The.Studio.2025.S01.MULTi.1080p.WEB.H265-FW/</D:href>") {
-		t.Error("root listing should contain the nested torrent as a directory entry")
+	// Root should only show __all__ synthetic dir, not real torrent names
+	if !strings.Contains(body, "__all__") {
+		t.Error("root listing should contain __all__ synthetic directory")
 	}
-	if !strings.Contains(body, "<D:href>/webdav/Simple.Movie/</D:href>") {
-		t.Error("root listing should contain Simple.Movie as a directory entry")
+	if strings.Contains(body, "<D:href>/webdav/The.Studio.2025.S01.MULTi.1080p.WEB.H265-FW/</D:href>") {
+		t.Error("root listing should NOT contain torrent dirs directly; only __all__")
 	}
+	if strings.Contains(body, "<D:href>/webdav/Simple.Movie/</D:href>") {
+		t.Error("root listing should NOT contain torrent dirs directly; only __all__")
+	}
+
+
 
 	// --- Test 2: Listing the Simple.Movie directory should show the file directly ---
 	req2 := httptest.NewRequest(http.MethodGet, "/webdav/Simple.Movie/", nil)

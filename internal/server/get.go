@@ -777,7 +777,7 @@ func (s *Server) serveDirListing(w http.ResponseWriter, reqPath string, depth st
 
 		// At the root level (/webdav/) with virtual paths configured,
 		// show synthetic directory entries instead of real files.
-		if prefix == "" && len(s.virtualFilters) > 0 && root == webdavRoot {
+		if prefix == "" && root == webdavRoot {
 			baseHref := strings.TrimRight(normalised, "/") + "/"
 			responses = appendResponse(responses, baseHref+"__all__/", true, 0, "", "", "", &seen)
 			for _, vf := range s.virtualFilters {

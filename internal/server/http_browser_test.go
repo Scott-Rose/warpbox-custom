@@ -70,7 +70,7 @@ func TestHTTPBrowser_FolderSizeAccumulation(t *testing.T) {
 	queue := throttle.NewQueue(600)
 	srv := New(cfg, store, nil, queue)
 
-	r := httptest.NewRequest(http.MethodGet, "/http/", nil)
+	r := httptest.NewRequest(http.MethodGet, "/http/__all__/", nil)
 	w := httptest.NewRecorder()
 	srv.mux.ServeHTTP(w, r)
 
@@ -144,7 +144,7 @@ func TestHTTPBrowser_SortByName(t *testing.T) {
 	queue := throttle.NewQueue(600)
 	srv := New(cfg, store, nil, queue)
 
-	r := httptest.NewRequest(http.MethodGet, "/http/", nil)
+	r := httptest.NewRequest(http.MethodGet, "/http/__all__/", nil)
 	w := httptest.NewRecorder()
 	srv.mux.ServeHTTP(w, r)
 	body := w.Body.String()
@@ -176,7 +176,7 @@ func TestHTTPBrowser_SortByNameReverse(t *testing.T) {
 	queue := throttle.NewQueue(600)
 	srv := New(cfg, store, nil, queue)
 
-	r := httptest.NewRequest(http.MethodGet, "/http/?sort=-name", nil)
+	r := httptest.NewRequest(http.MethodGet, "/http/__all__/?sort=-name", nil)
 	w := httptest.NewRecorder()
 	srv.mux.ServeHTTP(w, r)
 	body := w.Body.String()
@@ -207,7 +207,7 @@ func TestHTTPBrowser_SortBySize(t *testing.T) {
 	queue := throttle.NewQueue(600)
 	srv := New(cfg, store, nil, queue)
 
-	r := httptest.NewRequest(http.MethodGet, "/http/?sort=size", nil)
+	r := httptest.NewRequest(http.MethodGet, "/http/__all__/?sort=size", nil)
 	w := httptest.NewRecorder()
 	srv.mux.ServeHTTP(w, r)
 	body := w.Body.String()
@@ -239,7 +239,7 @@ func TestHTTPBrowser_SortByType(t *testing.T) {
 	queue := throttle.NewQueue(600)
 	srv := New(cfg, store, nil, queue)
 
-	r := httptest.NewRequest(http.MethodGet, "/http/?sort=type", nil)
+	r := httptest.NewRequest(http.MethodGet, "/http/__all__/?sort=type", nil)
 	w := httptest.NewRecorder()
 	srv.mux.ServeHTTP(w, r)
 	body := w.Body.String()
@@ -270,7 +270,7 @@ func TestHTTPBrowser_SortByTypeReverse(t *testing.T) {
 	queue := throttle.NewQueue(600)
 	srv := New(cfg, store, nil, queue)
 
-	r := httptest.NewRequest(http.MethodGet, "/http/?sort=-type", nil)
+	r := httptest.NewRequest(http.MethodGet, "/http/__all__/?sort=-type", nil)
 	w := httptest.NewRecorder()
 	srv.mux.ServeHTTP(w, r)
 	body := w.Body.String()
@@ -330,17 +330,29 @@ func TestHTTPBrowser_NoLibraryConfig(t *testing.T) {
 	queue := throttle.NewQueue(600)
 	srv := New(cfg, store, nil, queue)
 
+	// Root should show __all__ synthetic dir only.
 	r := httptest.NewRequest(http.MethodGet, "/http/", nil)
 	w := httptest.NewRecorder()
 	srv.mux.ServeHTTP(w, r)
 	body := w.Body.String()
 
-	// Without virtual paths, root should show torrents directly
-	if !strings.Contains(body, "Torrent") {
-		t.Error("without library, root should show Torrent directory directly")
+	if !strings.Contains(body, "__all__") {
+		t.Error("without virtual paths, /http/ should show __all__ synthetic dir")
 	}
-	if !strings.Contains(body, "100 B") {
-		t.Errorf("size should be shown")
+	if strings.Contains(body, "Torrent") {
+		t.Error("without virtual paths, /http/ root should NOT show Torrent directly")
+	}
+
+	// __all__ sub-path shows all real files.
+	r2 := httptest.NewRequest(http.MethodGet, "/http/__all__/", nil)
+	w2 := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w2, r2)
+	body2 := w2.Body.String()
+	if !strings.Contains(body2, "Torrent") {
+		t.Error("/http/__all__/ should show Torrent directory")
+	}
+	if !strings.Contains(body2, "100 B") {
+		t.Errorf("size should be shown in __all__ view")
 	}
 }
 

@@ -318,7 +318,7 @@ func validateLibrary(l *LibraryConfig) error {
 			return fmt.Errorf("library.virtual_paths[%d].name must not contain '/', got %q", i, name)
 		}
 		if name == "__all__" {
-			return fmt.Errorf("library.virtual_paths[%d].name %q is reserved", i, name)
+			continue
 		}
 		if seen[name] {
 			return fmt.Errorf("library.virtual_paths[%d].name %q is duplicated", i, name)

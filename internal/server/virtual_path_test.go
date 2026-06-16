@@ -248,32 +248,46 @@ func TestVirtualPath_NoLibraryConfig(t *testing.T) {
 	queue := throttle.NewQueue(600)
 	srv := New(cfg, store, nil, queue)
 
-	// Without virtual paths, /webdav/ shows real torrent dirs (backward compat).
+	// Without virtual paths, /webdav/ shows only __all__ synthetic dir.
 	r := httptest.NewRequest("PROPFIND", "/webdav/", nil)
 	w := httptest.NewRecorder()
 	srv.mux.ServeHTTP(w, r)
 	body := w.Body.String()
 
+	if !strings.Contains(body, "__all__") {
+		t.Error("without virtual paths, /webdav/ should show __all__ synthetic dir")
+	}
 	for _, dir := range []string{"The.Matrix.1999", "Breaking.Bad.S01"} {
-		if !strings.Contains(body, dir) {
-			t.Errorf("without virtual paths, /webdav/ should show %q", dir)
+		if strings.Contains(body, dir) {
+			t.Errorf("without virtual paths, /webdav/ root should NOT show %q directly", dir)
+		}
+	}
+
+	// __all__ sub-path shows all real torrent dirs.
+	r2 := httptest.NewRequest("PROPFIND", "/webdav/__all__/", nil)
+	w2 := httptest.NewRecorder()
+	srv.mux.ServeHTTP(w2, r2)
+	body2 := w2.Body.String()
+	for _, dir := range []string{"The.Matrix.1999", "Breaking.Bad.S01"} {
+		if !strings.Contains(body2, dir) {
+			t.Errorf("/webdav/__all__/ should show %q", dir)
 		}
 	}
 
 	// Without virtual paths, virtual names are treated as real dir lookups.
 	// They return empty collections (not 404) since PROPFIND shows the dir itself.
 	for _, name := range []string{"/webdav/movies", "/webdav/tv"} {
-		r2 := httptest.NewRequest("PROPFIND", name+"/", nil)
-		w2 := httptest.NewRecorder()
-		srv.mux.ServeHTTP(w2, r2)
-		resp2 := w2.Result()
-		resp2.Body.Close()
-		if resp2.StatusCode != http.StatusMultiStatus {
-			t.Errorf("without virtual paths, %s/ should return MultiStatus (empty dir), got %d", name, resp2.StatusCode)
+		r3 := httptest.NewRequest("PROPFIND", name+"/", nil)
+		w3 := httptest.NewRecorder()
+		srv.mux.ServeHTTP(w3, r3)
+		resp3 := w3.Result()
+		resp3.Body.Close()
+		if resp3.StatusCode != http.StatusMultiStatus {
+			t.Errorf("without virtual paths, %s/ should return MultiStatus (empty dir), got %d", name, resp3.StatusCode)
 		}
-		body2 := w2.Body.String()
+		body3 := w3.Body.String()
 		// Should only contain the directory itself, no real content.
-		if strings.Contains(body2, "The.Matrix.1999") || strings.Contains(body2, "Breaking.Bad.S01") {
+		if strings.Contains(body3, "The.Matrix.1999") || strings.Contains(body3, "Breaking.Bad.S01") {
 			t.Errorf("without virtual paths, %s/ should not contain real content", name)
 		}
 	}

@@ -116,7 +116,7 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	dirOrder := []string{}
 
 	// At the root level with virtual paths configured, show synthetic dirs.
-	if rawVirtualPath == "" && len(s.virtualFilters) > 0 {
+	if rawVirtualPath == "" {
 		// Compute total sizes for each virtual path (matching only, not largest).
 		var allTotal int64
 		filterTotals := make(map[int]int64, len(s.virtualFilters))

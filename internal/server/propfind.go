@@ -114,7 +114,7 @@ func (s *Server) handlePropfind(w http.ResponseWriter, r *http.Request) {
 		// At the root level (/webdav/) with virtual paths configured,
 		// show synthetic directory entries instead of real files.
 		_, isInsideMount := r.Context().Value(mountRootKey).(string)
-		if prefix == "" && len(s.virtualFilters) > 0 && !isInsideMount {
+		if prefix == "" && !isInsideMount {
 			baseHref := strings.TrimRight(reqPath, "/") + "/"
 			// __all__ is always first.
 			responses = appendResponse(responses, baseHref+"__all__/", true, 0, "", "", "", &seen)

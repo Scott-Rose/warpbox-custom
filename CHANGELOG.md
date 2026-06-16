@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.5.2] - 2026-06-16
+
+### Fixed
+- Always inject `__all__` synthetic directory at /webdav/, /http/, /infuse/ root even when no virtual paths are configured
+- Silently ignore user-configured virtual path named `__all__` instead of returning a validation error
+
 ## [v0.5.1] - 2026-06-16
 
 ### Added
@@ -61,7 +67,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove live API credentials from repo — switch to `.template` files, refs #143
 - Fix pre-release audit documentation issues across multiple tickets, refs #109 #110 #138 #139
 
-[Unreleased]: /compare/v0.5.1...HEAD
+[Unreleased]: /compare/v0.5.2...HEAD
+
+[v0.5.2]: /compare/v0.5.1...v0.5.2
 
 [v0.5.1]: /compare/v0.5.0...v0.5.1
 
