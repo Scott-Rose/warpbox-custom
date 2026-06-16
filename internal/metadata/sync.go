@@ -368,7 +368,7 @@ func (w *SyncWorker) syncOnce(ctx context.Context) {
 	// current tag were not touched by this sync and are safe to remove.
 	// We always prune, even on partial fetch failure, to avoid accumulating
 	// orphaned entries for torrents that have been removed from the account.
-	if syncTag > 0 && count > 0 {
+	if syncTag > 0 && (torRes.err == nil || usenetRes.err == nil) {
 		deleted, pruneErr := w.store.PruneBySyncTag(syncTag)
 		if pruneErr != nil {
 			slog.Error("metadata sync: prune failed", "error", pruneErr)
