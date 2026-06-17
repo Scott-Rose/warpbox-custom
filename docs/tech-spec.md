@@ -99,11 +99,10 @@ If you change the code, update this spec.
 
 ### Graceful Shutdown
 
-- There is no explicit `http.Server.Shutdown()` call — the process exits by returning from `main()` when the signal context is cancelled.
+- On signal, `srv.Shutdown(ctx)` is called with a 30-second timeout context, which invokes `http.Server.Shutdown()` — draining active connections and stopping the listener.
 - The `defer metadataStore.Close()` runs, flushing WAL.
 - The sync worker's loop exits when its derived context is cancelled (via context propagation from the signal context).
 - The throttle queue's `processLoop` goroutine exits when its context is cancelled.
-- Cleanup is implicit: OS closes sockets, Go runtime shuts down goroutines.
 
 ### Library Hook Execution (`runItemsHook`)
 
@@ -145,6 +144,7 @@ The `requireAuth` middleware is applied **per-route** using chi's `s.mux.With(re
 | GET | `/warpbox.svg` | No | `handleLogo` | Embedded SVG logo (from `embed` FS) |
 | GET | `/favicon.ico` | No | `handleLogo` | Same SVG as favicon |
 | GET | `/openapi.json` | Yes | `openapi.Handler()` | Auto-generated OpenAPI 3.0 spec from annotated routes |
+| GET | `/chart.umd.min.js` | No | `handleChartJS` | Embedded Chart.js library (served from compile-time `//go:embed`) |
 
 ### WebDAV Dispatch (`handleWebDAV`)
 
@@ -386,7 +386,7 @@ func (c *Client) listGeneric(ctx, endpoint, label, params) ([]Torrent, error)
 
 **`TorrentFile`** (7 fields): `ID int64`, `Name string`, `Size int64`, `MimeType string`, `S3Path string`, `ShortName string`, `MD5 *string`.
 
-**`UserInfo`** (16 fields): `ID int64`, `Email string`, `Plan int`, `PlanName string`, `Premium bool`, `PremiumExpires *string`, `CreatedAt string`, `ReferralCode string`, `PremiumDownloadLimit int64`, `TotalDownloaded int64`, `TotalEgressed int64`, `OverallRatio float64`, etc.
+**`UserInfo`** (15 fields): `ID int64`, `AuthID string`, `Email string`, `Plan int`, `PlanName string`, `Premium bool`, `PremiumExpires *string`, `CreatedAt string`, `UpdatedAt string`, `ReferralCode string`, `Registered bool`, `PremiumDownloadLimit int64`, `TotalDownloaded int64`, `TotalEgressed int64`, `OverallRatio float64`.
 
 ### Internal `do()` Helper
 
@@ -666,7 +666,7 @@ This means charts show call rate per interval, not monotonically increasing tota
 
 ### Chart.js Frontend
 
-The landing page HTML template (`internal/server/landing.html`, embedded via `//go:embed`) includes Chart.js (loaded from CDN in the `<script>` tag). It fetches `/stats.json` on page load and renders sparkline charts for each metric using `<canvas>` elements. Charts show the last N minutes of data (configurable via `stats.chart_minutes`).
+The landing page HTML template (`internal/server/landing.html`, embedded via `//go:embed`) includes Chart.js (also embedded at compile time via `//go:embed chart.umd.min.js` and served locally at `/chart.umd.min.js`). It fetches `/stats.json` on page load and renders sparkline charts for each metric using `<canvas>` elements. Charts show the last N minutes of data (configurable via `stats.chart_minutes`).
 
 ### Log Ring Buffer
 
@@ -794,7 +794,7 @@ YAML. Parsed with `gopkg.in/yaml.v3` (preserves comments on round-trip). The con
 Each virtual path entry:
 | Key | Type | Validation |
 |-----|------|------------|
-| `name` | string | Required, no `/`, not `__all__`, unique |
+| `name` | string | Required, no `/`, unique (the reserved name `__all__` is silently accepted but filtered out at runtime) |
 | `directory_include` | string | Must compile as regex |
 | `directory_exclude` | string | Must compile as regex |
 | `file_regex` | string | Must compile as regex |
