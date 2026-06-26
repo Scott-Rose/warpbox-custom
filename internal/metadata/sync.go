@@ -24,7 +24,6 @@ type SyncWorker struct {
 	client         *torbox.Client
 	queue          *throttle.Queue
 	interval       time.Duration
-	limit          int
 	listPageSize   int
 	retryAttempts  int
 	retryBackoff   time.Duration
@@ -59,17 +58,15 @@ func (w *SyncWorker) Status() SyncStatus {
 
 // NewSyncWorker creates a new metadata sync worker.
 // interval is how often to sync (e.g. 5 minutes).
-// limit is the max number of files to fetch per sync.
 // listPageSize is the per-request page window when paginating mylist API calls.
 // retryAttempts is the max number of retries for transient API errors.
 // retryBackoff is the base backoff duration (exponential: 1x, 2x, 4x).
-func NewSyncWorker(store *Store, client *torbox.Client, queue *throttle.Queue, interval time.Duration, limit int, listPageSize int, retryAttempts int, retryBackoff time.Duration) *SyncWorker {
+func NewSyncWorker(store *Store, client *torbox.Client, queue *throttle.Queue, interval time.Duration, listPageSize int, retryAttempts int, retryBackoff time.Duration) *SyncWorker {
 	return &SyncWorker{
 		store:          store,
 		client:         client,
 		queue:          queue,
 		interval:       interval,
-		limit:          limit,
 		listPageSize:   listPageSize,
 		retryAttempts:  retryAttempts,
 		retryBackoff:   retryBackoff,
@@ -285,7 +282,6 @@ func (w *SyncWorker) syncOnce(ctx context.Context) {
 			torrents, err = w.client.ListTorrents(ctx, torbox.ListFilesParams{
 				BypassCache: false,
 				Offset:      0,
-				Limit:       w.limit,
 				PageSize:    w.listPageSize,
 			})
 				if err == nil || !torbox.IsRetryable(err) {
@@ -319,7 +315,6 @@ func (w *SyncWorker) syncOnce(ctx context.Context) {
 			usenet, err = w.client.ListUsenet(ctx, torbox.ListFilesParams{
 				BypassCache: false,
 				Offset:      0,
-				Limit:       w.limit,
 				PageSize:    w.listPageSize,
 			})
 				if err == nil || !torbox.IsRetryable(err) {

@@ -80,7 +80,6 @@ type LandingData struct {
 	MaxCDNConnections    int
 
 	// Sync config fields
-	SyncLimit int
 	SyncListPageSize int
 
 	// Auth config fields
@@ -203,7 +202,6 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		CSRFToken:   s.csrfToken,
 
 		// Sync config
-		SyncLimit:        s.cfg.SyncLimit,
 		SyncListPageSize: s.cfg.SyncListPageSize,
 
 		// Stats config

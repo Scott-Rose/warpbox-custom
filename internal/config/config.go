@@ -65,7 +65,6 @@ type LoggingConfig struct {
 // SyncConfig holds metadata sync settings.
 type SyncConfig struct {
 	IntervalMinutes int `yaml:"interval_minutes"` // Default: 5
-	Limit           int `yaml:"limit"`            // Max files to fetch per sync; default: 5000
 	ListPageSize    int `yaml:"list_page_size"`   // Items per page when paginating mylist API; default: 5000
 	RetryAttempts   *int `yaml:"retry_attempts"`   // Max retries for sync API errors; nil→default 3
 	RetryBackoff    *int `yaml:"retry_backoff"`    // Base backoff seconds for sync retries; nil→default 1
@@ -134,9 +133,6 @@ func setDefaults(c *Config) {
 	}
 	if c.Sync.IntervalMinutes == 0 {
 		c.Sync.IntervalMinutes = 5
-	}
-	if c.Sync.Limit == 0 {
-		c.Sync.Limit = 5000
 	}
 	if c.Sync.ListPageSize == 0 {
 		c.Sync.ListPageSize = 5000
@@ -230,9 +226,6 @@ func validate(c *Config) error {
 	}
 	if c.Sync.IntervalMinutes < 1 || c.Sync.IntervalMinutes > 1440 {
 		return fmt.Errorf("sync.interval_minutes must be 1–1440, got %d", c.Sync.IntervalMinutes)
-	}
-	if c.Sync.Limit < 1 || c.Sync.Limit > 100000 {
-		return fmt.Errorf("sync.limit must be 1–100000, got %d", c.Sync.Limit)
 	}
 	if c.Sync.ListPageSize < 1 || c.Sync.ListPageSize > 10000 {
 		return fmt.Errorf("sync.list_page_size must be 1–10000, got %d", c.Sync.ListPageSize)

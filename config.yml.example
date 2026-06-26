@@ -97,10 +97,6 @@ sync:
   # Must be 1–1440. Default: 5
   # interval_minutes: 5
 
-  # Maximum number of files to fetch per sync cycle.
-  # Must be 1–100000. Default: 5000
-  # limit: 5000
-
   # Items per page when paginating the mylist API.
   # TorBox caps each response at ~10,000 items, so Warpbox pages through
   # with this window size. Lower = more API calls but safer; higher = fewer

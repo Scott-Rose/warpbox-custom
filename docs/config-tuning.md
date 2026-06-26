@@ -28,7 +28,6 @@ simultaneous streams. The suggestions below are starting points, not rules.
 | `sync.interval_minutes` | 5 | 1–1440 | New content shows up too slowly for your workflow |
 | `sync.retry_attempts` | 3 | 0–10 | TorBox API is flaky during sync — increase for more resilience |
 | `sync.retry_backoff` | 1s | 1–60s | Longer pauses between retries to avoid hammering the API |
-| `sync.limit` | 5000 | 1–100000 | Your library is larger than 5000 files and some aren't appearing |
 | `sync.list_page_size` | 5000 | 1–10000 | You want to tweak API call frequency vs. pagination safety |
 | `stats.retention_hours` | 24 | 1–720 | You want longer history on the sparkline charts |
 | `stats.chart_minutes` | 60 | 1–1440 | You want the landing page chart to show a shorter or longer window |
@@ -95,11 +94,9 @@ faster initial sync.
 
 ### Sync limit and library size
 
-Warpbox fetches up to `sync.limit` files per sync cycle, ordered by TorBox's
-default (roughly most-recently-added first). If your library has more files
-than the limit, the oldest items won't appear in the mount. TorBox's torrent
-limit is around 80 concurrent torrents, so 5000 is generous — but accounts
-with many single-file torrents or Usenet items may exceed it.
+Warpbox syncs all torrents and Usenet items by paginating through TorBox's API
+(the page window is controlled by `sync.list_page_size`). No cap — everything
+in your account is visible in the mount.
 
 ### Circuit breaker settings
 
@@ -134,14 +131,14 @@ credentials.
 |-----|-----------|-----|
 | `negative_cache_max_entries` | 500 | Reduce in-memory map size |
 | `circuit_breaker_max_entries` | 200 | Same reason |
-| `sync.limit` | 2000 | Smaller DB writes |
+| `sync.list_page_size` | 1000 | Fewer items per page, slower sync, more API calls |
 | `cleanup_interval_seconds` | 120 | Less frequent stats I/O |
 
 ### Large library (10 000+ files)
 
 | Key | Suggested | Why |
 |-----|-----------|-----|
-| `sync.limit` | 20000 | Cover more of the library |
+| `sync.list_page_size` | 8000 | Fewer API calls per sync cycle |
 | `sync.interval_minutes` | 10 | Give the longer sync time to complete before the next cycle |
 
 ### Heavy streaming (3+ simultaneous 4K streams)

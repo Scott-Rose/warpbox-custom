@@ -400,7 +400,6 @@ func TestListFilesWithParams(t *testing.T) {
 	_, err := client.ListTorrents(context.Background(), ListFilesParams{
 		BypassCache: true,
 		Offset:      10,
-		Limit:       50,
 	})
 	if err != nil {
 		t.Fatalf("ListTorrents failed: %v", err)
@@ -429,7 +428,7 @@ func TestListPaginatesPastCap(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(server.URL, "key")
-	got, err := client.ListTorrents(context.Background(), ListFilesParams{Limit: 50000})
+	got, err := client.ListTorrents(context.Background(), ListFilesParams{})
 	if err != nil {
 		t.Fatalf("ListTorrents failed: %v", err)
 	}

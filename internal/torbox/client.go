@@ -138,7 +138,6 @@ type Torrent struct {
 type ListFilesParams struct {
 	BypassCache bool
 	Offset      int
-	Limit       int
 	PageSize    int // Per-request page window; 0 uses defaultListPageSize
 }
 
@@ -164,9 +163,7 @@ func (c *Client) listGeneric(ctx context.Context, endpoint, label string, params
 	// drops everything past the newest 10k — i.e. the oldest torrents become
 	// invisible (accounts with >10k torrents lose their tail, breaking
 	// playback of older library content). Page through with offset until a
-	// short page signals the end. params.Limit, when > 0, is treated as a
-	// safety ceiling on the TOTAL number of items fetched.
-	maxTotal := params.Limit
+	// short page signals the end of the list.
 	offset := params.Offset
 	var all []Torrent
 
@@ -223,10 +220,6 @@ func (c *Client) listGeneric(ctx context.Context, endpoint, label string, params
 			break // short page → end of list
 		}
 		offset += len(page)
-		if maxTotal > 0 && len(all) >= maxTotal {
-			all = all[:maxTotal]
-			break
-		}
 	}
 
 	slog.Debug("torbox "+label+" result", "count", len(all))

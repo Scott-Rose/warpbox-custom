@@ -1,0 +1,11 @@
+tree 2ee9c37400eaa4db682b6678450728963a42079d
+parent 54e5ffbc69182fe665bbe43bfb95f36003ae8ef9
+author mainLink0435 <ben.page@live.com> 1780794612 +1000
+committer mainLink0435 <ben.page@live.com> 1780794612 +1000
+
+docs: clarify rclone WebDAV consumer architecture and update roadmap
+
+- README: replace Plex-centric descriptions with accurate rclone flow
+- README: add architecture diagram (Plex → rclone → WebDAV → Warpbox → TorBox)
+- system-patterns: add rclone architecture diagram to Section 1
+- active-context: add rclone note to Current Focus, add recommended rclone config to Next Steps

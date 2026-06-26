@@ -61,7 +61,7 @@ If you change the code, update this spec.
 
 12. **Signal context.** `ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM); defer stop()` — the root context is cancelled when SIGINT or SIGTERM is received. All components derive their contexts from this root.
 
-13. **Sync worker.** `metadata.NewSyncWorker(store, client, queue, interval, limit, listPageSize, retryAttempts, retryBackoff)`:
+13. **Sync worker.** `metadata.NewSyncWorker(store, client, queue, interval, listPageSize, retryAttempts, retryBackoff)`:
     - Stores references to the metadata store, TorBox client, throttle queue, interval, and limit
     - Wires library hooks: `syncWorker.OnItemsAdded` and `syncWorker.OnItemsRemoved` are set to call `runItemsHook(libCfg.OnItemsAdded, libCfg.HookTimeoutSec, items)` when configured
     - `go syncWorker.Start(ctx)` — runs the periodic sync loop in a background goroutine
@@ -398,10 +398,9 @@ func (c *Client) listGeneric(ctx, endpoint, label, params) ([]Torrent, error)
 
 - Builds URL with `bypass_cache`, `offset`, `limit` query parameters.
 - The loop accumulates pages until a short page signals the end.
-- `params.Limit` (when > 0) is a ceiling on the TOTAL, not a per-request limit.
 - Sends Bearer token via Authorization header.
 - Returns Torrent struct (Usenet API returns the same JSON shape).
-- Params: `ListFilesParams{BypassCache bool, Offset int, Limit int}`
+- Params: `ListFilesParams{BypassCache bool, Offset int, PageSize int}`
 
 ### Download URL Endpoints
 
@@ -446,7 +445,7 @@ The core request executor:
 
 `SyncWorker` manages the periodic TorBox → SQLite synchronisation loop:
 
-- **`NewSyncWorker(store, client, queue, interval, limit, listPageSize, retryAttempts, retryBackoff)`** — stores references. `retryAttempts` (default 3) controls how many times each API call is retried on transient failures. `retryBackoff` (default 1s) is the base exponential backoff duration. `listPageSize` (default 5000) controls the per-request page window when paginating mylist API calls. Does not start.
+- **`NewSyncWorker(store, client, queue, interval, listPageSize, retryAttempts, retryBackoff)`** — stores references. `retryAttempts` (default 3) controls how many times each API call is retried on transient failures. `retryBackoff` (default 1s) is the base exponential backoff duration. `listPageSize` (default 5000) controls the per-request page window when paginating mylist API calls. Does not start.
 - **`Start(ctx)`** — stores `ctx` as `parentCtx`, creates a derived `cancelCtx`, calls `runLoop(ctx)`, closes `loopDone` channel on exit.
 - **`Stop()`** — calls the cancel function on the current loop, waits up to 90 seconds for `loopDone` to close. Safe to call multiple times or before `Start`.
 - **`Restart()`** — calls `Stop()`, creates a new derived context from `parentCtx`, launches `runLoop` in a new goroutine.
@@ -800,7 +799,6 @@ YAML. Parsed with `gopkg.in/yaml.v3` (preserves comments on round-trip). The con
 | Key | Type | Default | Validation | Description |
 |-----|------|---------|------------|-------------|
 | `interval_minutes` | int | `5` | 1–1440 | Metadata sync interval |
-| `limit` | int | `5000` | 1–100000 | Max files per sync cycle |
 | `list_page_size` | int | `5000` | 1–10000 | Per-request page window when paginating mylist API calls |
 | `retry_attempts` | int (pointer) | `3` | 0–10 | Max sync API retry attempts on transient errors (0 = no retry) |
 | `retry_backoff` | int (pointer) | `1` | 1–60 | Sync retry exponential backoff base (seconds) |
