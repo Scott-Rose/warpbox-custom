@@ -1,5 +1,0 @@
-fix: wire slog logging across throttle, server, and torbox packages
-
-- throttle: replace silent error discard with slog.Error
-- server: replace dead fmt.Sprintf with slog.Debug, remove unused fmt import
-- torbox: add slog.Debug for API call enter/leave in ListFiles and GetDownloadURL
