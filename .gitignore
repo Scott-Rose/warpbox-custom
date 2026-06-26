@@ -68,3 +68,4 @@ torbox_before.txt
 torbox_new.txt
 usenet_sample.json
 internal/server/warpbox-sm.png
+.git-rewrite/
