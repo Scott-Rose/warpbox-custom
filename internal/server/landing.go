@@ -39,6 +39,7 @@ type LandingData struct {
 	Version              string
 	Uptime               string
 	FileCount            int
+	ItemCount            int
 	WebDAVURL            string
 	HTTPURL              string
 	InfuseURL            string
@@ -118,11 +119,16 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 	uptime := time.Since(s.startTime)
 	uptimeStr := formatDuration(uptime)
 
-	// Count files in the store.
+	// Count files and items in the store.
 	fileCount, err := s.store.CountFiles()
 	if err != nil {
 		slog.Error("landing: CountFiles failed", "error", err)
 		fileCount = -1
+	}
+	itemCount, err := s.store.CountItems()
+	if err != nil {
+		slog.Error("landing: CountItems failed", "error", err)
+		itemCount = -1
 	}
 
 	// Throttle stats.
@@ -157,6 +163,7 @@ func (s *Server) handleLanding(w http.ResponseWriter, r *http.Request) {
 		Version:             s.cfg.Version,
 		Uptime:              uptimeStr,
 		FileCount:           fileCount,
+		ItemCount:           itemCount,
 		WebDAVURL:           s.root + "/",
 		HTTPURL:             "/http/",
 		InfuseURL:           "/infuse/",

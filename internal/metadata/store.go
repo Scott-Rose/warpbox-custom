@@ -327,6 +327,16 @@ func (s *Store) CountFiles() (int, error) {
 	return count, nil
 }
 
+// CountItems returns the number of distinct torrent/usenet items in the store.
+func (s *Store) CountItems() (int, error) {
+	row := s.db.QueryRow(`SELECT COUNT(*) FROM (SELECT DISTINCT item_id, source FROM files)`)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return 0, fmt.Errorf("counting items: %w", err)
+	}
+	return count, nil
+}
+
 // GetItemIDByFileID returns the item_id for a given (source, file_id) pair.
 // This is needed because TorBox's requestdl endpoint requires the parent ID.
 func (s *Store) GetItemIDByFileID(source FileSource, fileID int64) (int64, error) {
